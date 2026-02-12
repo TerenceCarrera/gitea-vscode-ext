@@ -372,7 +372,7 @@
                 },
                 "gitea.defaultRepoStartingPath": {
                     "type": "string",
-                    "default": "c:\\Users\\Terence\\source\\repos",
+                    "default": "",
                     "description": "Default starting path for repository operations"
                 },
                 "gitea.profiles": {

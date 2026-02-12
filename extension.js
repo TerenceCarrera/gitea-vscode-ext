@@ -382,7 +382,10 @@ async function activate(context) {
         try {
             const repo = item.repository;
             const config = vscode.workspace.getConfiguration('gitea');
-            const defaultPath = config.get('defaultRepoStartingPath') || require('path').join(require('os').homedir(), 'source', 'repos');
+            const configPath = config.get('defaultRepoStartingPath');
+            const defaultPath = (configPath && configPath.trim() !== '') 
+                ? configPath 
+                : require('path').join(require('os').homedir(), 'source', 'repos');
             const repoPath = vscode.Uri.file(require('path').join(defaultPath, repo.full_name));
 
             // Check if repository already exists locally
