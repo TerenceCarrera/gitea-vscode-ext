@@ -1,198 +1,76 @@
 ## Gitea Extension for VS Code
 
-Integrate Gitea into VS Code: browse repositories, track issues and pull requests, search across your projects, receive notifications, and jump to items in your browser — all from the Activity Bar.
+Browse repositories, track issues and pull requests, manage branches, and receive notifications — all from the Activity Bar.
 
 ### Features
 
-#### Issue Management
-
-- **Import Issues from XLSX**: Bulk import issues from Excel files with automatic label mapping
-  - Support for XLSX format with flexible column naming
-  - Automatic label name to ID mapping (labels must exist in repository)
-  - Interactive preview and configuration dialog
-  - Detailed error reporting with failure summary
-  - See [Import Issues Documentation](docs/IMPORT_ISSUES_FEATURE.md) for details
-- **Issues View**: Grouped by Repository → State (Open/Closed) → Items, with quick open-in-browser
-- **WebView Creation**: Rich forms for creating issues with repository selection, labels, and assignees
-- **WebView Details**: Rich detail panels with inline commenting and actions
-- **Search Issues**: Quick search with flat result lists per view
-
-#### Pull Request Management
-
-- **Pull Requests View**: Grouped by Repository → State (Open/WIP/Closed) → Items, with draft/WIP detection
-- **WebView Creation**: Rich forms for creating pull requests with repository selection, branch picker, labels, and assignees
-- **WebView Details**: Rich detail panels with reviews, comments, and merge actions
-- **Reviews**: Approve, comment, or request changes on pull requests directly from VS Code
-- **Merge PRs**: Merge, squash, or rebase pull requests with confirmation
-- **PR Commits View**: See all commits in a pull request with SHA, message, author, and timestamp
-- **Conflict Detection**: Displays specific conflicting files when merge conflicts are detected in a PR
-- **Out-of-date PR Alerts**: Notifies when a PR branch is behind the base branch with quick update action
-- **Search Pull Requests**: Quick search with flat result lists
-
-#### Branch Management
-
-- **Branch Deletion Tracking & Restoration**: Comprehensive branch management with deletion history, visual diff previews, and automatic sync
-  - Track deleted branches across sessions with persistent storage
-  - Restore deleted branches from extension history or Git reflog
-  - Preview file changes before restoration with interactive diff viewer
-  - Export/import deletion history as JSON for portability
-  - Automatic sync across machines via VS Code Settings Sync
-  - Deleted Branches view with repository grouping and timestamps
-  - Configurable retention period (1-365 days) for automatic cleanup
-- **Branch Switching**: Switch between branches in your repository with a quick picker
-- **Quick Branch Creation**: Create branches directly from issues or pull requests with auto-generated names
-
-#### Repository Management
-
-- **Repositories View**: Lists only repositories present in your workspace (detected via local Git remotes)
-- **Workspace Detection Details**: See [Workspace Repository Detection](docs/WORKSPACE_REPOS.md) for matching rules, scan depth, and fallbacks
-- **Create Repository**: Create new repositories directly from VS Code
-- **Clone and Open**: Clone a remote repo and open it in a new window if not already present
-- **Search Repositories**: Quick search across your Gitea repositories
-- **Open Actions**: Open repository/issue/pull request in your default browser
-
-#### Notifications & Alerts
-
-- **Notifications**: Optional polling to surface repository activity inside VS Code
-- **Notification Alerts**: Quick actions to focus Issues/PRs views in VS Code, open in browser, or copy commit SHAs directly from toasts
-- **Performance-aware**: Caches read-only API responses, throttles refresh bursts, and defers notification polling to reduce startup cost and API load
-
-#### Additional Features
-
-- **VS Code Profile Sync**: Back up and restore your VS Code settings, keybindings, and extension list using any Gitea repository
-  - `Gitea: Sync VS Code Profile to Gitea` — uploads `settings.json`, `keybindings.json`, and installed extensions to a Gitea repo (creates `<you>/vscode-profile` automatically if needed)
-  - `Gitea: Restore VS Code Profile from Gitea` — downloads and applies profile files; offers to install any missing extensions
-- **Profile Management**: Configure and switch between multiple Gitea instances/accounts with profile management commands
-- **Stash Management**: Manage git stashes with support for creating, applying, popping, dropping, and viewing stashes
-- **Markdown Rendering**: PR and Issue descriptions and comments render with full markdown formatting, including images fetched securely via the authenticated API
-- **Inline Code Review**: View file changes directly in PR detail panels with syntax-highlighted diffs
+- **Repositories view**: shows repos in your workspace whose git remote matches your Gitea instance. Clone, create, and open repos.
+- **Issues view**: grouped by repo → open/closed. Create, search, import from XLSX, and view rich detail panels with inline commenting.
+- **Pull Requests view**: grouped by repo → open/WIP/closed. Create, review (approve/comment/request changes), merge (merge/squash/rebase), and view commits and diffs.
+- **Branch management**: switch branches, create branches from issues/PRs, delete with tracking, restore from history or reflog with diff preview. Export/import deletion history as JSON.
+- **Notifications**: optional polling with actionable alerts (open in VS Code, open in browser, copy commit SHA).
+- **Multiple profiles**: configure accounts for several Gitea instances. Assign a profile to each workspace via `Gitea: Set Workspace Profile` — the extension auto-switches on open and sets `git config user.name` / `user.email` locally for proper commit attribution.
+- **VS Code profile sync**: back up and restore settings, keybindings, and extensions to any Gitea repository.
+- **Markdown rendering**: issues and PRs render with full markdown; Gitea-hosted images are fetched with authentication to avoid 403s.
 
 ### Getting Started
 
-1. Open VS Code in a folder containing one or more Git repositories.
-2. Configure your Gitea instance and token via command palette:
-   - Run `Gitea: Configure Instance`.
-   - Provide `gitea.instanceUrl`, Personal Access Token and an Alias/Name for your Profile.
-3. Open the Gitea Activity Bar icon to explore Repositories, Issues, and Pull Requests.
+1. Open a folder containing git repositories
+2. Run `Gitea: Configure Instance` — set URL, token, and profile name
+3. Open the Gitea Activity Bar to browse repos, issues, and PRs
 
-### Views Overview
+#### Multi-profile workflow
 
-- Repositories: shows only repos whose `.git/config` remote matches your Gitea instance.
-- Issues: repository groups → `Open` and `Closed` sections → individual issues.
-- Pull Requests: repository groups → `Open`, `Work-in-Progress`, and `Closed` sections.
-
-### Notes
-
-- WIP detection uses `draft` flag or common title prefixes (wip, [wip], work in progress, draft).
-- Searches return flat lists for quick navigation; clear search to return to grouped view.
-- If no workspace repositories are detected, the extension can prompt to open a folder, clone a repo, or show all repos.
-- Worktree and submodule `.git` files are supported when matching repositories. Worktree directories correctly resolve to the main repository's `config` via the `commondir` file so remote URLs are found.
+1. Run `Gitea: Add Profile` for each Gitea instance (optionally set user name and email for commit attribution)
+2. Open a workspace, run `Gitea: Set Workspace Profile`, and pick the profile for that workspace
+3. The extension saves the choice in `.vscode/settings.json` and auto-applies it on re-open, including `git config user.name` / `user.email`
 
 ### Commands
 
-- Gitea: Configure Instance (`gitea.configure`): set instance URL and token.
-- Gitea: Search Repositories (`gitea.searchRepositories`)
-- Gitea: Search Issues (`gitea.searchIssues`)
-- Gitea: Search Pull Requests (`gitea.searchPullRequests`)
-- Refresh Repositories (`gitea.refreshRepositories`): refresh current view data.
-- Gitea: Toggle Notifications (`gitea.toggleNotifications`)
-- Gitea: Check Notification Status (`gitea.notificationStatus`)
-- Gitea: Create Repository (`gitea.createRepository`)
-- Gitea: Create Issue (`gitea.createIssue`)
-- Gitea: Import Issues from XLSX (`gitea.importIssues`): bulk import issues from Excel file.
-- Gitea: Create Pull Request (`gitea.createPullRequest`)
-- Open Repository in VS Code (`gitea.openRepository`)
-- Open in Browser (`gitea.openInBrowser`)
-- Open Issue in Browser (`gitea.openIssueInBrowser`)
-- Open Pull Request in Browser (`gitea.openPullRequestInBrowser`)
-- View Issue Details (`gitea.viewIssueDetails`): open rich detail panel with comments and actions.
-- View Pull Request Details (`gitea.viewPullRequestDetails`): open rich detail panel with reviews, comments, and merge actions.
-- Gitea: Sync VS Code Profile to Gitea (`gitea.syncProfileToGitea`): upload settings, keybindings, and extensions to a Gitea repository.
-- Gitea: Restore VS Code Profile from Gitea (`gitea.restoreProfileFromGitea`): download and apply a previously synced VS Code profile.
+| Command | Action |
+|---|---|
+| `Gitea: Configure Instance` | Set instance URL, token, and profile |
+| `Gitea: Add Profile` | Add another Gitea profile |
+| `Gitea: Switch Profile` | Switch active profile globally |
+| `Gitea: Set Workspace Profile` | Assign a profile to the current workspace |
+| `Gitea: Remove Profile` | Remove a saved profile |
+| `Gitea: Search Repositories / Issues / PRs` | Quick search |
+| `Gitea: Create Repository / Issue / PR` | Create via rich forms |
+| `Gitea: Import Issues from XLSX` | Bulk import issues from Excel |
+| `Gitea: Open in Browser` | Open repo/issue/PR in browser |
+| `Gitea: View Issue / PR Details` | Rich detail panels |
+| `Gitea: Switch Branch` | Checkout branches |
+| `Gitea: Delete Branch` | Delete with tracking |
+| `Gitea: Restore Deleted Branch` | Restore from history |
+| `Gitea: Restore Branch from Reflog` | Scan reflog for old deletions |
+| `Gitea: Export / Import Deletion History` | JSON backup and transfer |
+| `Gitea: Toggle Notifications` | Enable/disable polling |
+| `Gitea: Sync / Restore VS Code Profile` | Backup IDE config to Gitea |
 
 ### Settings
 
-- `gitea.instanceUrl`: Your Gitea instance URL (e.g., `https://gitea.example.com`).
-- `gitea.authToken`: Personal Access Token for Gitea API authentication.
-- `gitea.enableNotifications`: Enable notifications for repository activities.
-- `gitea.notificationPollInterval`: Poll interval for notifications in ms (minimum 30000).
-- `gitea.defaultRepoStartingPath`: Default local path for cloning new repositories.
-- `gitea.showAllReposWhenNoWorkspace`: Show all repositories when none are detected in the current workspace.
-- `gitea.repoScanDepth`: Maximum folder depth to scan for git repositories in the workspace.
-- `gitea.profiles`: Configure multiple Gitea profiles with instance URL, token, and alias.
-- `gitea.activeProfile`: Set the active profile by its alias/name.
-- `gitea.profileSyncRepo`: Default Gitea repository (owner/repo) used for VS Code profile sync (defaults to `<currentUser>/vscode-profile`).
+Key settings under `gitea.*`:
 
-### Performance behavior
+- `profiles` — configured profiles with `instanceUrl`, `authToken`, and optional `userName`/`userEmail`
+- `activeProfile` — current active profile name
+- `workspaceProfile` — profile assigned to current workspace (set via command)
+- `enableNotifications`, `notificationPollInterval`
+- `showAllReposWhenNoWorkspace`, `repoScanDepth`
+- `branchDeletionRetentionDays` (1–365, default: 90)
 
-- GET requests are cached for 10 seconds to reduce duplicate API calls; caches clear automatically when you switch or add profiles.
-- GET requests that return arrays are automatically paginated when the Gitea API provides an `X-Total-Count` response header; the extension will request `?page=1..n` and merge results before returning.
-- For endpoints that support `limit`, include it in the request URL to reduce the number of paginated requests (for example: `...?limit=100`).
-- Refresh commands are throttled to prevent rapid bursts of network requests.
-- Notification polling initializes lazily and starts after a short delay to keep extension activation snappy.
+### Performance
+
+- GET responses cached for 10s; cache clears on profile switch
+- Pagination: array-returning GET endpoints are auto-paginated via `X-Total-Count`
+- Refresh commands throttled (1s debounce)
+- Notification polling starts lazily after a 2s delay
 
 ### Requirements
 
-- VS Code 1.90.0 or newer.
-- Git installed.
-- Access to a Gitea instance and a Personal Access Token.
-  - **Required Token Permissions (Read & Write)**:
-    - **Repository**: Create repositories, access repository metadata, manage branches
-    - **Issue**: View, create, import, and comment on issues
-    - **Pull Request**: View, create, review, and merge pull requests
-  - **Required Token Permissions (Read Only)**:
-    - **Notification**: Receive repository activity notifications
-    - **User**: Authenticate and fetch user information
-
-### Known Issues
-
-- This extension is in active development; features and APIs may change.
-
-### Contributing
-
-Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
-
-#### How to Contribute
-
-1. **Fork the repository** on Gitea or GitHub.
-2. **Clone your fork** locally:
-   ```bash
-   git clone https://github.com/terence-carrera/gitea-vscode.git
-   cd gitea-vscode
-   ```
-3. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-4. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-5. **Make your changes** and test thoroughly.
-6. **Commit your changes** with clear, descriptive messages:
-   ```bash
-   git commit -m "Add feature: description of your changes"
-   ```
-7. **Push to your fork**:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-8. **Submit a pull request** with a clear description of the changes and any related issues.
-
-#### Development
-
-- Run the extension in debug mode by pressing `F5` in VS Code.
-- Make sure to test your changes with a real Gitea instance.
-- Follow existing code style and patterns.
-- Update documentation as needed.
-
-#### Reporting Issues
-
-If you encounter bugs or have feature requests, please [open an issue](https://github.com/terence-carrera/gitea-vscode/issues) with:
-- A clear description of the problem or suggestion
-- Steps to reproduce (for bugs)
-- Your environment (VS Code version, OS, Gitea version)
+- VS Code 1.90.0+
+- Git
+- Gitea instance and Personal Access Token with **Read & Write** permissions for Repository, Issue, Pull Request and **Read Only** for Notification, User
 
 ### Release Notes
 
-See [CHANGELOG.md](CHANGELOG.md) for details.
+See [CHANGELOG.md](CHANGELOG.md) for version history.

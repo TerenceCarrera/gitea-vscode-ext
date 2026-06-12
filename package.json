@@ -2,7 +2,7 @@
     "name": "gitea",
     "displayName": "Gitea",
     "description": "Unofficial Gitea Extension for VS Code",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "publisher": "TerenceCarrera",
     "license": "GPL-3.0-only",
     "repository": {
@@ -185,6 +185,11 @@
                 "command": "gitea.switchProfile",
                 "title": "Gitea: Switch Profile",
                 "icon": "$(account)"
+            },
+            {
+                "command": "gitea.setWorkspaceProfile",
+                "title": "Gitea: Set Workspace Profile",
+                "icon": "$(link)"
             },
             {
                 "command": "gitea.removeProfile",
@@ -416,6 +421,14 @@
                             "authToken": {
                                 "type": "string",
                                 "description": "Personal Access Token for this profile"
+                            },
+                            "userName": {
+                                "type": "string",
+                                "description": "Git user.name to use for commits in workspaces assigned to this profile"
+                            },
+                            "userEmail": {
+                                "type": "string",
+                                "description": "Git user.email to use for commits in workspaces assigned to this profile"
                             }
                         },
                         "required": [
@@ -435,6 +448,11 @@
                     "description": "Number of days to retain deleted branch history (default: 90 days)",
                     "minimum": 1,
                     "maximum": 365
+                },
+                "gitea.workspaceProfile": {
+                    "type": "string",
+                    "default": null,
+                    "description": "Profile to use for the current workspace (set via 'Gitea: Set Workspace Profile')"
                 }
             }
         }

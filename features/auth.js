@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const https = require('https');
 const http = require('http');
 const { CacheManager } = require('./performanceOptimizer');
+const { setGitUserConfig } = require('./gitUtils');
 
 class GiteaAuth {
     constructor() {
@@ -9,7 +10,7 @@ class GiteaAuth {
         this.authToken = null;
         this.activeProfile = null;
         this.profiles = {};
-        this.cache = new CacheManager(1000); // 10 second TTL for API cache
+        this.cache = new CacheManager(10000); // 10 second TTL for API cache
     }
 
     /**
@@ -125,10 +126,30 @@ class GiteaAuth {
 
             if (!profileName) return;
 
+            // Get git user name (optional)
+            const userName = await vscode.window.showInputBox({
+                prompt: 'Git user.name for commits (optional — leave blank to skip)',
+                placeHolder: 'e.g., John Doe',
+                value: this.profiles[profileName]?.userName || ''
+            });
+
+            if (userName === undefined) return;
+
+            // Get git user email (optional)
+            const userEmail = await vscode.window.showInputBox({
+                prompt: 'Git user.email for commits (optional — leave blank to skip)',
+                placeHolder: 'e.g., john@example.com',
+                value: this.profiles[profileName]?.userEmail || ''
+            });
+
+            if (userEmail === undefined) return;
+
             // Save profile
             this.profiles[profileName] = {
                 instanceUrl: instanceUrl,
-                authToken: authToken
+                authToken: authToken,
+                userName: userName || undefined,
+                userEmail: userEmail || undefined
             };
             this.activeProfile = profileName;
             this.instanceUrl = instanceUrl;
@@ -192,10 +213,28 @@ class GiteaAuth {
 
             if (!profileName) return false;
 
+            // Get git user name (optional)
+            const userName = await vscode.window.showInputBox({
+                prompt: 'Git user.name for commits (optional — leave blank to skip)',
+                placeHolder: 'e.g., John Doe'
+            });
+
+            if (userName === undefined) return false;
+
+            // Get git user email (optional)
+            const userEmail = await vscode.window.showInputBox({
+                prompt: 'Git user.email for commits (optional — leave blank to skip)',
+                placeHolder: 'e.g., john@example.com'
+            });
+
+            if (userEmail === undefined) return false;
+
             // Save profile
             this.profiles[profileName] = {
                 instanceUrl: instanceUrl,
-                authToken: authToken
+                authToken: authToken,
+                userName: userName || undefined,
+                userEmail: userEmail || undefined
             };
 
             await this.saveProfiles();
@@ -518,6 +557,63 @@ class GiteaAuth {
      */
     isConfigured() {
         return !!(this.instanceUrl && this.authToken);
+    }
+
+    /**
+     * Get the profile name assigned to the current workspace (from workspace settings).
+     * @returns {string|null}
+     */
+    getWorkspaceProfile() {
+        try {
+            const config = vscode.workspace.getConfiguration('gitea');
+            return config.get('workspaceProfile', null);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Assign a profile name to the current workspace (saves to workspace settings).
+     * Pass null to clear the assignment.
+     * @param {string|null} profileName
+     */
+    async setWorkspaceProfile(profileName) {
+        const config = vscode.workspace.getConfiguration('gitea');
+        await config.update('workspaceProfile', profileName, vscode.ConfigurationTarget.Workspace);
+    }
+
+    /**
+     * If the current workspace has a profile assigned via workspace settings,
+     * switch to it silently (if it differs from the active profile).
+     * @returns {Promise<string|null>} The profile name switched to, or null
+     */
+    async applyWorkspaceProfile() {
+        const assignedName = this.getWorkspaceProfile();
+        if (!assignedName) return null;
+
+        const profile = this.profiles[assignedName];
+        if (!profile) return null;
+
+        if (assignedName === this.activeProfile) return null;
+
+        this.activeProfile = assignedName;
+        this.instanceUrl = profile.instanceUrl;
+        this.authToken = profile.authToken;
+        this.cache.clear();
+        await this.saveProfiles();
+
+        if (profile.userName || profile.userEmail) {
+            const folders = vscode.workspace.workspaceFolders;
+            if (folders) {
+                setGitUserConfig(
+                    folders.map(f => f.uri.fsPath),
+                    profile.userName,
+                    profile.userEmail
+                );
+            }
+        }
+
+        return assignedName;
     }
 }
 

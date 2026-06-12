@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const { execSync, execFileSync } = require('child_process');
+const { findGitReposInDir, getRepoScanDepth } = require('./gitUtils');
 
 class BranchManager {
     constructor(auth, context) {
@@ -85,30 +86,10 @@ class BranchManager {
 
         const repoNameLower = repoName.toLowerCase();
 
-        // Helper function to search for git repos recursively
-        const findGitReposInDir = (dirPath, depth = 2) => {
-            const foundRepos = [];
-            if (depth < 0) return foundRepos;
-            try {
-                const gitPath = path.join(dirPath, '.git');
-                if (fs.existsSync(gitPath)) foundRepos.push(dirPath);
-                const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-                for (const entry of entries) {
-                    if (entry.isDirectory() && !entry.name.startsWith('.')) {
-                        const subDirPath = path.join(dirPath, entry.name);
-                        foundRepos.push(...findGitReposInDir(subDirPath, depth - 1));
-                    }
-                }
-            } catch {
-                // Ignore errors for inaccessible directories
-            }
-            return foundRepos;
-        };
-
         // Search through all workspace folders and their subdirectories
         for (const folder of workspaceFolders) {
             const folderPath = folder.uri.fsPath;
-            const gitRepoPaths = findGitReposInDir(folderPath);
+            const gitRepoPaths = findGitReposInDir(folderPath, getRepoScanDepth());
 
             for (const repoPath of gitRepoPaths) {
                 const gitConfigPath = path.join(repoPath, '.git', 'config');
