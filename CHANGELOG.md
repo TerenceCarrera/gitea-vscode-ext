@@ -3,6 +3,12 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.1] - 2026-06-13
+
+### Fixed
+
+- **`allRepos.map is not a function` crash in tree providers** (issue [#20](https://github.com/terence-carrera/gitea-vscode/issues/20)): `filterRepositoriesByWorkspace` now guards against non-array `allRepos` values returned by the API client when the server response is not a JSON array (e.g., HTML error page, JSON error object, or unexpected format). The tree views (Repositories, Issues, Pull Requests) degrade gracefully instead of failing with `allRepos.map is not a function`.
+
 ## [0.3.0] - 2026-06-13
 
 ### Added
