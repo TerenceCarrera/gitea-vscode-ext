@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const { filterRepositoriesByWorkspace } = require('./treeProviders');
 
 class NotificationManager {
     constructor(auth) {
@@ -64,7 +65,7 @@ class NotificationManager {
             const repos = await this.auth.makeRequest('/api/v1/user/repos');
             if (!repos || repos.length === 0) return;
 
-            const workspaceRepos = this.filterRepositoriesByWorkspace(repos);
+            const workspaceRepos = filterRepositoriesByWorkspace(repos);
             if (workspaceRepos.length === 0) return; // No workspace repos to monitor
 
             for (const repo of workspaceRepos) {
@@ -320,38 +321,6 @@ class NotificationManager {
         };
     }
 
-    /**
-     * Filter repositories to only those loaded in current workspace
-     */
-    filterRepositoriesByWorkspace(allRepos) {
-        // Get workspace folders
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        if (workspaceFolders.length === 0) {
-            return []; // No workspace folders open
-        }
-
-        // Match repositories with workspace folders
-        const loadedRepos = [];
-        for (const repo of allRepos) {
-            for (const folder of workspaceFolders) {
-                const folderName = folder.name;
-                const repoName = repo.name;
-                const repoFullName = repo.full_name;
-
-                if (
-                    folderName === repoName ||
-                    folderName === repoFullName ||
-                    folderName.toLowerCase() === repoName.toLowerCase() ||
-                    folderName.toLowerCase() === repoFullName.toLowerCase()
-                ) {
-                    loadedRepos.push(repo);
-                    break; // Found match, move to next repo
-                }
-            }
-        }
-
-        return loadedRepos;
-    }
 }
 
 module.exports = NotificationManager;

@@ -3,12 +3,24 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-06-13
 
-### Planned
+### Added
 
-- Advanced PR filtering and sorting.
-- Branch rename operations.
+- **Workspace profile binding**: assign a Gitea profile to the current workspace via `Gitea: Set Workspace Profile`. The profile is saved in `.vscode/settings.json` and auto-applied on re-open.
+- **Git identity per profile**: profiles now have optional `userName` and `userEmail` fields. When a workspace profile is set, the extension runs `git config user.name` / `user.email` (local) in every workspace git repo so commits use the right identity automatically.
+
+### Changed
+
+- **Extension architecture**: refactored inline command handlers into dedicated modules under `features/commands/`. `extension.js` reduced from ~1143 to ~177 lines.
+- **Shared git utilities**: extracted `findGitReposInDir`, `resolveGitConfigPath`, `getRepoScanDepth` into `features/gitUtils.js` — used by both tree providers and branch management.
+- **Notification deduplication**: `filterRepositoriesByWorkspace` now imported from `treeProviders.js` instead of having a separate implementation in `notifications.js`.
+- **Documentation**: simplified all docs; removed internal architecture notes and scaffold template.
+
+### Fixed
+
+- **Cache TTL**: `CacheManager` in `auth.js` was initialized with 1000ms (1s) instead of the documented 10000ms (10s).
+- **Removed orphaned `helloWorld` command registration**.
 
 ## [0.2.1] - 2026-05-02
 
