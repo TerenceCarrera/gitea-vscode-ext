@@ -66,6 +66,7 @@ function invalidateWorkspaceCache() {
 function filterRepositoriesByWorkspace(allRepos) {
     const workspaceFolders = vscode.workspace.workspaceFolders || [];
     if (workspaceFolders.length === 0) return [];
+    if (!Array.isArray(allRepos)) return [];
 
     const folderKey = workspaceFolders.map(f => f.uri.fsPath).sort().join('|');
     const repoKey = allRepos.map(r => r.id).join(',');

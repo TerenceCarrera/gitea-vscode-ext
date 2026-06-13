@@ -2,7 +2,7 @@
     "name": "gitea",
     "displayName": "Gitea",
     "description": "Unofficial Gitea Extension for VS Code",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "publisher": "TerenceCarrera",
     "license": "GPL-3.0-only",
     "repository": {
