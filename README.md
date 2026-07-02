@@ -1,6 +1,6 @@
 ## Gitea Extension for VS Code
 
-Browse repositories, track issues and pull requests, manage branches, and receive notifications — all from the Activity Bar.
+Private VS Code extension for browsing Gitea repositories, tracking issues and pull requests, managing branches, and receiving notifications — all from the Activity Bar.
 
 ### Features
 

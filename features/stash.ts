@@ -1,17 +1,13 @@
-const vscode = require('vscode');
-const { execSync, execFileSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
+import * as vscode from 'vscode';
+import { execSync, execFileSync } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+import { StashInfo } from './types';
 
-class StashManager {
-    constructor() {
-        this.stashes = [];
-    }
+export class StashManager {
+    private stashes: StashInfo[] = [];
 
-    /**
-     * Get the git repository root from the current workspace
-     */
-    getRepositoryRoot() {
+    getRepositoryRoot(): string {
         try {
             if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
                 throw new Error('No workspace folder is open');
@@ -19,13 +15,11 @@ class StashManager {
 
             const workspaceFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
-            // Check if .git exists in the workspace root
             if (fs.existsSync(path.join(workspaceFolder, '.git'))) {
                 return workspaceFolder;
             }
 
-            // Search subdirectories for .git folder
-            const searchGitDir = (dir, depth = 0) => {
+            const searchGitDir = (dir: string, depth = 0): string | null => {
                 if (depth > 2) return null;
 
                 const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -53,22 +47,16 @@ class StashManager {
         }
     }
 
-    /**
-     * Execute a git command
-     */
-    executeGitCommand(command, cwd) {
+    executeGitCommand(command: string, cwd: string): string {
         try {
             const result = execSync(command, { cwd, encoding: 'utf-8' });
             return result.trim();
         } catch (error) {
-            throw new Error(`Git command failed: ${error.message}`);
+            throw new Error(`Git command failed: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * List all stashes
-     */
-    async listStashes() {
+    async listStashes(): Promise<StashInfo[]> {
         try {
             const cwd = this.getRepositoryRoot();
             const result = this.executeGitCommand('git stash list', cwd);
@@ -78,7 +66,6 @@ class StashManager {
                 return [];
             }
 
-            // Parse stash output: stash@{0}: WIP on master: abc1234 commit message
             this.stashes = result.split('\n').filter(line => line.trim()).map(line => {
                 const match = line.match(/^(stash@\{\d+\}): (.+)$/);
                 if (match) {
@@ -88,28 +75,23 @@ class StashManager {
                     };
                 }
                 return null;
-            }).filter(Boolean);
+            }).filter((s): s is StashInfo => s !== null);
 
             return this.stashes;
         } catch (error) {
             console.error('Failed to list stashes:', error);
-            vscode.window.showErrorMessage(`Failed to list stashes: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to list stashes: ${(error as Error).message}`);
             return [];
         }
     }
 
-    /**
-     * Create a new stash with an optional message
-     */
-    async createStash(message = null) {
+    async createStash(message: string | null = null): Promise<boolean> {
         try {
             const cwd = this.getRepositoryRoot();
 
-            // Get current branch and status for default message
             const branch = this.executeGitCommand('git rev-parse --abbrev-ref HEAD', cwd);
             const defaultMessage = message || `WIP on ${branch}`;
 
-            // Create stash (use execFileSync to safely pass the message as an argument)
             execFileSync('git', ['stash', 'push', '-m', defaultMessage], { cwd, encoding: 'utf-8' });
 
             vscode.window.showInformationMessage(`Stash created: "${defaultMessage}"`);
@@ -117,20 +99,16 @@ class StashManager {
             return true;
         } catch (error) {
             console.error('Failed to create stash:', error);
-            vscode.window.showErrorMessage(`Failed to create stash: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to create stash: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Apply a stash without removing it
-     */
-    async applyStash(stashId = null) {
+    async applyStash(stashId: string | null = null): Promise<boolean> {
         try {
             const cwd = this.getRepositoryRoot();
 
             if (!stashId) {
-                // Show quick pick
                 const stashes = await this.listStashes();
                 if (stashes.length === 0) {
                     vscode.window.showInformationMessage('No stashes available');
@@ -151,20 +129,16 @@ class StashManager {
             return true;
         } catch (error) {
             console.error('Failed to apply stash:', error);
-            vscode.window.showErrorMessage(`Failed to apply stash: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to apply stash: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Pop a stash (apply and remove)
-     */
-    async popStash(stashId = null) {
+    async popStash(stashId: string | null = null): Promise<boolean> {
         try {
             const cwd = this.getRepositoryRoot();
 
             if (!stashId) {
-                // Show quick pick
                 const stashes = await this.listStashes();
                 if (stashes.length === 0) {
                     vscode.window.showInformationMessage('No stashes available');
@@ -186,20 +160,16 @@ class StashManager {
             return true;
         } catch (error) {
             console.error('Failed to pop stash:', error);
-            vscode.window.showErrorMessage(`Failed to pop stash: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to pop stash: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Drop a stash
-     */
-    async dropStash(stashId = null) {
+    async dropStash(stashId: string | null = null): Promise<boolean> {
         try {
             const cwd = this.getRepositoryRoot();
 
             if (!stashId) {
-                // Show quick pick
                 const stashes = await this.listStashes();
                 if (stashes.length === 0) {
                     vscode.window.showInformationMessage('No stashes available');
@@ -228,20 +198,16 @@ class StashManager {
             return true;
         } catch (error) {
             console.error('Failed to drop stash:', error);
-            vscode.window.showErrorMessage(`Failed to drop stash: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to drop stash: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Show stash contents/diff
-     */
-    async showStashDiff(stashId = null) {
+    async showStashDiff(stashId: string | null = null): Promise<boolean> {
         try {
             const cwd = this.getRepositoryRoot();
 
             if (!stashId) {
-                // Show quick pick
                 const stashes = await this.listStashes();
                 if (stashes.length === 0) {
                     vscode.window.showInformationMessage('No stashes available');
@@ -259,7 +225,6 @@ class StashManager {
 
             const diff = this.executeGitCommand(`git stash show -p ${stashId}`, cwd);
 
-            // Create an output channel and show the diff
             const outputChannel = vscode.window.createOutputChannel(`Stash: ${stashId}`);
             outputChannel.clear();
             outputChannel.append(diff);
@@ -268,15 +233,12 @@ class StashManager {
             return true;
         } catch (error) {
             console.error('Failed to show stash diff:', error);
-            vscode.window.showErrorMessage(`Failed to show stash diff: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to show stash diff: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Manage stashes with interactive menu
-     */
-    async manageStashes() {
+    async manageStashes(): Promise<void> {
         const actions = [
             { label: '📦 Stash Changes', action: 'create' },
             { label: '📋 List Stashes', action: 'list' },
@@ -299,7 +261,7 @@ class StashManager {
                     prompt: 'Enter a stash message (optional)',
                     placeHolder: 'e.g., WIP: feature implementation'
                 });
-                await this.createStash(message);
+                await this.createStash(message ?? null);
                 break;
             }
             case 'list': {
@@ -327,5 +289,3 @@ class StashManager {
         }
     }
 }
-
-module.exports = StashManager;

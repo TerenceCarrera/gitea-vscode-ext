@@ -1,45 +1,34 @@
-const vscode = require('vscode');
-const https = require('https');
-const http = require('http');
-const { CacheManager } = require('./performanceOptimizer');
-const { setGitUserConfig } = require('./gitUtils');
+import * as vscode from 'vscode';
+import * as https from 'https';
+import * as http from 'http';
+import { CacheManager } from './performanceOptimizer';
+import { setGitUserConfig } from './gitUtils';
+import { GiteaProfiles, ProfileInfo } from './types';
 
 class GiteaAuth {
-    constructor() {
-        this.instanceUrl = null;
-        this.authToken = null;
-        this.activeProfile = null;
-        this.profiles = {};
-        this.cache = new CacheManager(10000); // 10 second TTL for API cache
-    }
+    instanceUrl: string | null = null;
+    authToken: string | null = null;
+    activeProfile: string | null = null;
+    profiles: GiteaProfiles = {};
+    cache: CacheManager<any> = new CacheManager(10000);
 
-    /**
-     * Initialize authentication from VS Code settings
-     */
-    async initialize() {
+    async initialize(): Promise<boolean> {
         try {
             const config = vscode.workspace.getConfiguration('gitea');
-
-            // Load profiles
-            const savedProfiles = config.get('profiles') || {};
+            const savedProfiles: GiteaProfiles = (config.get('profiles') as GiteaProfiles) || {};
             this.profiles = savedProfiles;
+            const profileName: string = (config.get('activeProfile') as string) || 'default';
 
-            // Get active profile name
-            const profileName = config.get('activeProfile') || 'default';
-
-            // Load active profile
             if (this.profiles[profileName]) {
                 this.activeProfile = profileName;
                 const profile = this.profiles[profileName];
                 this.instanceUrl = profile.instanceUrl;
                 this.authToken = profile.authToken;
             } else {
-            // Try legacy configuration for backward compatibility
-                this.instanceUrl = config.get('instanceUrl');
-                this.authToken = config.get('authToken');
+                this.instanceUrl = config.get('instanceUrl') || null;
+                this.authToken = config.get('authToken') || null;
 
                 if (this.instanceUrl && this.authToken) {
-                    // Migrate to profile-based system
                     this.profiles['default'] = {
                         instanceUrl: this.instanceUrl,
                         authToken: this.authToken
@@ -56,15 +45,12 @@ class GiteaAuth {
             return await this.validateCredentials();
         } catch (error) {
             console.error('Failed to initialize authentication:', error);
-            vscode.window.showErrorMessage(`Failed to initialize Gitea authentication: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to initialize Gitea authentication: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Validate credentials by making a test API call
-     */
-    async validateCredentials() {
+    async validateCredentials(): Promise<boolean> {
         try {
             const user = await this.makeRequest('/api/v1/user');
             if (user && user.login) {
@@ -72,22 +58,18 @@ class GiteaAuth {
             }
             return false;
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to Authenticate with Gitea: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to Authenticate with Gitea: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Configure Gitea instance and authentication
-     */
-    async configure() {
+    async configure(): Promise<void> {
         try {
-            // Get instance URL
             const instanceUrl = await vscode.window.showInputBox({
                 prompt: 'Enter your Gitea instance URL',
                 placeHolder: 'https://gitea.example.com',
                 value: this.instanceUrl || '',
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Instance URL is required';
                     try {
                         new URL(value);
@@ -100,12 +82,11 @@ class GiteaAuth {
 
             if (!instanceUrl) return;
 
-            // Get auth token
             const authToken = await vscode.window.showInputBox({
                 prompt: 'Enter your Personal Access Token',
                 placeHolder: 'Your Gitea Personal Access Token',
                 password: true,
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Token is required';
                     return null;
                 }
@@ -113,12 +94,11 @@ class GiteaAuth {
 
             if (!authToken) return;
 
-            // Get profile name
             const profileName = await vscode.window.showInputBox({
                 prompt: 'Enter a profile name',
                 placeHolder: 'e.g., work, personal, default',
                 value: this.activeProfile || 'default',
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Profile name is required';
                     return null;
                 }
@@ -126,7 +106,6 @@ class GiteaAuth {
 
             if (!profileName) return;
 
-            // Get git user name (optional)
             const userName = await vscode.window.showInputBox({
                 prompt: 'Git user.name for commits (optional — leave blank to skip)',
                 placeHolder: 'e.g., John Doe',
@@ -135,7 +114,6 @@ class GiteaAuth {
 
             if (userName === undefined) return;
 
-            // Get git user email (optional)
             const userEmail = await vscode.window.showInputBox({
                 prompt: 'Git user.email for commits (optional — leave blank to skip)',
                 placeHolder: 'e.g., john@example.com',
@@ -144,7 +122,6 @@ class GiteaAuth {
 
             if (userEmail === undefined) return;
 
-            // Save profile
             this.profiles[profileName] = {
                 instanceUrl: instanceUrl,
                 authToken: authToken,
@@ -156,25 +133,19 @@ class GiteaAuth {
             this.authToken = authToken;
 
             await this.saveProfiles();
-
-            // Validate
             await this.validateCredentials();
         } catch (error) {
             console.error('Failed to configure Gitea:', error);
-            vscode.window.showErrorMessage(`Failed to configure Gitea: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to configure Gitea: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Add a new profile
-     */
-    async addProfile() {
+    async addProfile(): Promise<boolean> {
         try {
-            // Get instance URL
             const instanceUrl = await vscode.window.showInputBox({
                 prompt: 'Enter your Gitea instance URL',
                 placeHolder: 'https://gitea.example.com',
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Instance URL is required';
                     try {
                         new URL(value);
@@ -187,12 +158,11 @@ class GiteaAuth {
 
             if (!instanceUrl) return false;
 
-            // Get auth token
             const authToken = await vscode.window.showInputBox({
                 prompt: 'Enter your Personal Access Token',
                 placeHolder: 'Your Gitea Personal Access Token',
                 password: true,
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Token is required';
                     return null;
                 }
@@ -200,11 +170,10 @@ class GiteaAuth {
 
             if (!authToken) return false;
 
-            // Get profile name
             const profileName = await vscode.window.showInputBox({
                 prompt: 'Enter a profile name',
                 placeHolder: 'e.g., work, personal, main',
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Profile name is required';
                     if (this.profiles[value]) return `Profile "${value}" already exists`;
                     return null;
@@ -213,7 +182,6 @@ class GiteaAuth {
 
             if (!profileName) return false;
 
-            // Get git user name (optional)
             const userName = await vscode.window.showInputBox({
                 prompt: 'Git user.name for commits (optional — leave blank to skip)',
                 placeHolder: 'e.g., John Doe'
@@ -221,7 +189,6 @@ class GiteaAuth {
 
             if (userName === undefined) return false;
 
-            // Get git user email (optional)
             const userEmail = await vscode.window.showInputBox({
                 prompt: 'Git user.email for commits (optional — leave blank to skip)',
                 placeHolder: 'e.g., john@example.com'
@@ -229,7 +196,6 @@ class GiteaAuth {
 
             if (userEmail === undefined) return false;
 
-            // Save profile
             this.profiles[profileName] = {
                 instanceUrl: instanceUrl,
                 authToken: authToken,
@@ -239,7 +205,6 @@ class GiteaAuth {
 
             await this.saveProfiles();
 
-            // Ask if user wants to switch to this profile
             const switchNow = await vscode.window.showInformationMessage(
                 `Profile "${profileName}" created successfully. Switch to it now?`,
                 'Switch', 'Keep Current'
@@ -256,15 +221,12 @@ class GiteaAuth {
             return true;
         } catch (error) {
             console.error('Failed to add profile:', error);
-            vscode.window.showErrorMessage(`Failed to add profile: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to add profile: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Save profiles to VS Code settings
-     */
-    async saveProfiles() {
+    async saveProfiles(): Promise<void> {
         try {
             const config = vscode.workspace.getConfiguration('gitea');
             await config.update('profiles', this.profiles, vscode.ConfigurationTarget.Global);
@@ -275,14 +237,10 @@ class GiteaAuth {
         }
     }
 
-    /**
-     * Switch to a different profile (list and switch combined)
-     */
-    async switchProfile() {
+    async switchProfile(): Promise<boolean> {
         try {
-            // Reload profiles from settings to ensure we have the latest
             const config = vscode.workspace.getConfiguration('gitea');
-            const savedProfiles = config.get('profiles') || {};
+            const savedProfiles: GiteaProfiles = config.get('profiles') || {};
             this.profiles = savedProfiles;
 
             const profileNames = Object.keys(this.profiles);
@@ -303,7 +261,6 @@ class GiteaAuth {
 
             if (!selected) return false;
 
-            // If same profile is selected, just return
             if (selected.profileName === this.activeProfile) {
                 vscode.window.showInformationMessage(`Already on Profile: ${selected.profileName}`);
                 return false;
@@ -323,18 +280,14 @@ class GiteaAuth {
             return true;
         } catch (error) {
             console.error('Failed to switch profile:', error);
-            vscode.window.showErrorMessage(`Failed to switch profile: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to switch profile: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * List all available profiles (returns array for programmatic access)
-     */
-    listProfiles() {
-        // Reload profiles from settings to ensure we have the latest
+    listProfiles(): ProfileInfo[] {
         const config = vscode.workspace.getConfiguration('gitea');
-        const savedProfiles = config.get('profiles') || {};
+        const savedProfiles: GiteaProfiles = config.get('profiles') || {};
         this.profiles = savedProfiles;
 
         return Object.keys(this.profiles).map(name => ({
@@ -344,14 +297,10 @@ class GiteaAuth {
         }));
     }
 
-    /**
-     * Remove a profile
-     */
-    async removeProfile(profileName = null) {
+    async removeProfile(profileName?: string | null): Promise<boolean> {
         try {
-            // Reload profiles from settings to ensure we have the latest
             const config = vscode.workspace.getConfiguration('gitea');
-            const savedProfiles = config.get('profiles') || {};
+            const savedProfiles: GiteaProfiles = config.get('profiles') || {};
             this.profiles = savedProfiles;
 
             if (!profileName) {
@@ -393,17 +342,12 @@ class GiteaAuth {
             return true;
         } catch (error) {
             console.error('Failed to remove profile:', error);
-            vscode.window.showErrorMessage(`Failed to remove profile: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to remove profile: ${(error as Error).message}`);
             return false;
         }
     }
 
-    /**
-     * Make an authenticated request to the Gitea API
-     * @param {string} endpoint - API endpoint (e.g., '/api/v1/user')
-     * @param {object} options - Request options
-     */
-    makeRequest(endpoint, options = {}) {
+    makeRequest(endpoint: string, options: { method?: string; body?: any; headers?: Record<string, string> } = {}): Promise<any> {
         return new Promise((resolve, reject) => {
             if (!this.instanceUrl || !this.authToken) {
                 reject(new Error('Gitea not configured. Please run "Gitea: Configure Instance"'));
@@ -411,9 +355,13 @@ class GiteaAuth {
             }
 
             const method = options.method || 'GET';
-            // Internal function to handle pagination
-            const fetchAllPages = (endpoint, options, page = 1, accumulated = []) => {
-                // Build endpoint with page parameter if needed
+
+            const fetchAllPages = (
+                endpoint: string,
+                options: { method?: string; body?: any; headers?: Record<string, string> },
+                page: number = 1,
+                accumulated: any[] = []
+            ): void => {
                 let pagedEndpoint = endpoint;
                 if (endpoint.includes('?')) {
                     pagedEndpoint += `&page=${page}`;
@@ -421,13 +369,13 @@ class GiteaAuth {
                     pagedEndpoint += `?page=${page}`;
                 }
 
-                const url = new URL(pagedEndpoint, this.instanceUrl);
+                const url = new URL(pagedEndpoint, this.instanceUrl!);
                 const protocol = url.protocol === 'https:' ? https : http;
 
-                const requestOptions = {
+                const requestOptions: https.RequestOptions = {
                     method: method,
                     headers: {
-                        'Authorization': `token ${this.authToken}`,
+                        'Authorization': `token ${this.authToken!}`,
                         'Content-Type': 'application/json',
                         ...options.headers
                     }
@@ -441,36 +389,31 @@ class GiteaAuth {
                     });
 
                     res.on('end', () => {
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                            let parsed;
+                        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                            let parsed: any;
                             try {
                                 parsed = JSON.parse(data);
-                            } catch (e) {
-                                void(e);
+                            } catch {
                                 resolve(data);
                                 return;
                             }
 
-                            // Handle pagination only for GET and array data
                             if (method === 'GET' && Array.isArray(parsed) && res.headers['x-total-count']) {
-                                const total = parseInt(res.headers['x-total-count'], 10);
+                                const total = parseInt(res.headers['x-total-count'] as string, 10);
                                 const currentCount = accumulated.length + parsed.length;
                                 const allData = accumulated.concat(parsed);
                                 if (currentCount < total) {
-                                    // Request next page
                                     fetchAllPages(endpoint, options, page + 1, allData);
                                     return;
                                 } else {
-                                    // Cache only if all data has been collected
-                                    const cacheKey = `${this.instanceUrl}${endpoint}`;
+                                    const cacheKey = `${this.instanceUrl!}${endpoint}`;
                                     this.cache.set(cacheKey, allData);
                                     resolve(allData);
                                     return;
                                 }
                             } else {
-                                // Cache GET responses (not paginated)
                                 if (method === 'GET') {
-                                    const cacheKey = `${this.instanceUrl}${endpoint}`;
+                                    const cacheKey = `${this.instanceUrl!}${endpoint}`;
                                     this.cache.set(cacheKey, parsed);
                                 }
                                 resolve(parsed);
@@ -494,7 +437,6 @@ class GiteaAuth {
                 req.end();
             };
 
-            // Check cache for GET requests (safe to cache)
             if (method === 'GET') {
                 const cacheKey = `${this.instanceUrl}${endpoint}`;
                 const cached = this.cache.get(cacheKey);
@@ -504,27 +446,17 @@ class GiteaAuth {
                 }
             }
 
-            // Start the request (with pagination if needed)
             fetchAllPages(endpoint, options);
         });
     }
 
-    /**
-     * Fetch a URL with authentication and return a Buffer of the response body.
-     * Unlike makeRequest, this does NOT parse the response as JSON and works for
-     * any URL (not just /api/v1 endpoints), making it suitable for fetching
-     * binary assets such as issue attachments and embedded images.
-     *
-     * @param {string} url  Absolute URL to fetch
-     * @returns {Promise<Buffer>}
-     */
-    fetchBinary(url) {
+    fetchBinary(url: string): Promise<Buffer> {
         return new Promise((resolve, reject) => {
             if (!this.authToken) {
                 reject(new Error('Gitea not configured'));
                 return;
             }
-            let parsedUrl;
+            let parsedUrl: URL;
             try {
                 parsedUrl = new URL(url);
             } catch (e) {
@@ -532,15 +464,15 @@ class GiteaAuth {
                 return;
             }
             const protocol = parsedUrl.protocol === 'https:' ? https : http;
-            const requestOptions = {
+            const requestOptions: https.RequestOptions = {
                 method: 'GET',
                 headers: { 'Authorization': `token ${this.authToken}` }
             };
             const req = protocol.request(parsedUrl, requestOptions, (res) => {
-                const chunks = [];
+                const chunks: Buffer[] = [];
                 res.on('data', (chunk) => chunks.push(chunk));
                 res.on('end', () => {
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                    if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                         resolve(Buffer.concat(chunks));
                     } else {
                         reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
@@ -552,18 +484,11 @@ class GiteaAuth {
         });
     }
 
-    /**
-     * Check if authentication is configured
-     */
-    isConfigured() {
+    isConfigured(): boolean {
         return !!(this.instanceUrl && this.authToken);
     }
 
-    /**
-     * Get the profile name assigned to the current workspace (from workspace settings).
-     * @returns {string|null}
-     */
-    getWorkspaceProfile() {
+    getWorkspaceProfile(): string | null {
         try {
             const config = vscode.workspace.getConfiguration('gitea');
             return config.get('workspaceProfile', null);
@@ -572,22 +497,12 @@ class GiteaAuth {
         }
     }
 
-    /**
-     * Assign a profile name to the current workspace (saves to workspace settings).
-     * Pass null to clear the assignment.
-     * @param {string|null} profileName
-     */
-    async setWorkspaceProfile(profileName) {
+    async setWorkspaceProfile(profileName: string | null): Promise<void> {
         const config = vscode.workspace.getConfiguration('gitea');
         await config.update('workspaceProfile', profileName, vscode.ConfigurationTarget.Workspace);
     }
 
-    /**
-     * If the current workspace has a profile assigned via workspace settings,
-     * switch to it silently (if it differs from the active profile).
-     * @returns {Promise<string|null>} The profile name switched to, or null
-     */
-    async applyWorkspaceProfile() {
+    async applyWorkspaceProfile(): Promise<string | null> {
         const assignedName = this.getWorkspaceProfile();
         if (!assignedName) return null;
 
@@ -617,4 +532,4 @@ class GiteaAuth {
     }
 }
 
-module.exports = GiteaAuth;
+export default GiteaAuth;

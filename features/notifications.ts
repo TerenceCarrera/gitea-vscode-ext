@@ -1,19 +1,17 @@
-const vscode = require('vscode');
-const { filterRepositoriesByWorkspace } = require('./treeProviders');
+import * as vscode from 'vscode';
+import { filterRepositoriesByWorkspace } from './treeProviders';
+import { GiteaRepository, NotificationStatus } from './types';
+import GiteaAuth from './auth';
 
 class NotificationManager {
-    constructor(auth) {
-        this.auth = auth;
-        this.isMonitoring = false;
-        this.pollInterval = 60000; // 60 seconds
-        this.monitoringTimers = {};
-        this.activityCache = {}; // Track last known state
-    }
+    private isMonitoring: boolean = false;
+    private pollInterval: number = 60000;
+    private monitoringTimers: Record<string, any> = {};
+    private activityCache: Record<string, any> = {};
 
-    /**
-     * Start monitoring repositories for activity
-     */
-    async startMonitoring() {
+    constructor(private auth: GiteaAuth) {}
+
+    async startMonitoring(): Promise<void> {
         try {
             if (this.isMonitoring) return;
 
@@ -22,24 +20,19 @@ class NotificationManager {
             const config = vscode.workspace.getConfiguration('gitea');
             this.pollInterval = config.get('notificationPollInterval') || 60000;
 
-            // Initial check
             await this.checkRepositoriesActivity();
 
-            // Set up polling
             this.monitoringTimers.main = setInterval(async () => {
                 await this.checkRepositoriesActivity();
             }, this.pollInterval);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to start monitoring:', error);
             this.isMonitoring = false;
             vscode.window.showErrorMessage(`Failed to start repository monitoring: ${error.message}`);
         }
     }
 
-    /**
-     * Stop monitoring repositories
-     */
-    stopMonitoring() {
+    stopMonitoring(): void {
         try {
             if (!this.isMonitoring) return;
 
@@ -51,22 +44,18 @@ class NotificationManager {
             vscode.window.showInformationMessage('Repository monitoring stopped');
         } catch (error) {
             console.error('Failed to stop monitoring:', error);
-            // Don't show error to user as this is cleanup code
         }
     }
 
-    /**
-     * Check all repositories for new activities
-     */
-    async checkRepositoriesActivity() {
+    async checkRepositoriesActivity(): Promise<void> {
         if (!this.auth.isConfigured()) return;
 
         try {
-            const repos = await this.auth.makeRequest('/api/v1/user/repos');
+            const repos: GiteaRepository[] = await this.auth.makeRequest('/api/v1/user/repos');
             if (!repos || repos.length === 0) return;
 
             const workspaceRepos = filterRepositoriesByWorkspace(repos);
-            if (workspaceRepos.length === 0) return; // No workspace repos to monitor
+            if (workspaceRepos.length === 0) return;
 
             for (const repo of workspaceRepos) {
                 await this.checkRepoActivity(repo);
@@ -76,31 +65,24 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Check a single repository for new activities
-     */
-    async checkRepoActivity(repo) {
+    async checkRepoActivity(repo: GiteaRepository): Promise<void> {
         try {
-            const repoKey = `${repo.owner.login}/${repo.name}`;
+            const repoKey = `${repo.owner?.login}/${repo.name}`;
 
-            // Check for recent activity: issues, pull requests, commits
             const [issues, prs, commits] = await Promise.all([
                 this.checkNewIssues(repo, repoKey),
                 this.checkNewPullRequests(repo, repoKey),
                 this.checkNewCommits(repo, repoKey)
             ]);
 
-            // Check for new issues
             if (issues.length > 0) {
                 this.notifyNewIssues(repo, issues);
             }
 
-            // Check for new pull requests
             if (prs.length > 0) {
                 this.notifyNewPullRequests(repo, prs);
             }
 
-            // Check for new commits
             if (commits.length > 0) {
                 this.notifyNewCommits(repo, commits);
             }
@@ -109,24 +91,20 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Check for new issues
-     */
-    async checkNewIssues(repo, repoKey) {
+    async checkNewIssues(repo: GiteaRepository, repoKey: string): Promise<any[]> {
         try {
-            const issues = await this.auth.makeRequest(
-                `/api/v1/repos/${repo.owner.login}/${repo.name}/issues?state=open&limit=10`
+            const issues: any[] = await this.auth.makeRequest(
+                `/api/v1/repos/${repo.owner?.login}/${repo.name}/issues?state=open&limit=10`
             );
 
             if (!Array.isArray(issues)) return [];
 
-            // Evict cache if it grows too large (unbounded growth prevention)
             if (Object.keys(this.activityCache).length > 300) {
                 this.activityCache = {};
             }
 
             const cacheKey = `${repoKey}:issues`;
-            const previous = this.activityCache[cacheKey] || [];
+            const previous: any[] = this.activityCache[cacheKey] || [];
 
             const newIssues = issues.filter(issue =>
                 !issue.pull_request &&
@@ -141,19 +119,16 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Check for new pull requests
-     */
-    async checkNewPullRequests(repo, repoKey) {
+    async checkNewPullRequests(repo: GiteaRepository, repoKey: string): Promise<any[]> {
         try {
-            const prs = await this.auth.makeRequest(
-                `/api/v1/repos/${repo.owner.login}/${repo.name}/pulls?state=open&limit=10`
+            const prs: any[] = await this.auth.makeRequest(
+                `/api/v1/repos/${repo.owner?.login}/${repo.name}/pulls?state=open&limit=10`
             );
 
             if (!Array.isArray(prs)) return [];
 
             const cacheKey = `${repoKey}:prs`;
-            const previous = this.activityCache[cacheKey] || [];
+            const previous: any[] = this.activityCache[cacheKey] || [];
 
             const newPRs = prs.filter(pr =>
                 !previous.some(p => p.id === pr.id)
@@ -167,19 +142,16 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Check for new commits
-     */
-    async checkNewCommits(repo, repoKey) {
+    async checkNewCommits(repo: GiteaRepository, repoKey: string): Promise<any[]> {
         try {
-            const commits = await this.auth.makeRequest(
-                `/api/v1/repos/${repo.owner.login}/${repo.name}/commits?limit=5`
+            const commits: any[] = await this.auth.makeRequest(
+                `/api/v1/repos/${repo.owner?.login}/${repo.name}/commits?limit=5`
             );
 
             if (!commits || commits.length === 0) return [];
 
             const cacheKey = `${repoKey}:commits`;
-            const previous = this.activityCache[cacheKey] || [];
+            const previous: any[] = this.activityCache[cacheKey] || [];
 
             const newCommits = commits.filter(commit =>
                 !previous.some(p => p.sha === commit.sha)
@@ -193,10 +165,7 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Show notification for new issues
-     */
-    notifyNewIssues(repo, issues) {
+    notifyNewIssues(repo: GiteaRepository, issues: any[]): void {
         try {
             const count = issues.length;
             const title = count === 1 ? 'New Issue' : `${count} New Issues`;
@@ -220,7 +189,7 @@ class NotificationManager {
                 if (selection === 'View in VS Code') {
                     vscode.commands.executeCommand('workbench.view.extension.gitea-explorer')
                         .then(() => vscode.commands.executeCommand('gitea.issues.focus'))
-                        .catch(err => console.error('Failed to focus issues view:', err));
+                        .then(undefined, err => console.error('Failed to focus issues view:', err));
                 } else if (selection === 'Open in Browser') {
                     vscode.commands.executeCommand('gitea.openIssueInBrowser', issueItem)
                         .then(undefined, err => console.error('Failed to open issue in browser:', err));
@@ -231,10 +200,7 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Show notification for new pull requests
-     */
-    notifyNewPullRequests(repo, prs) {
+    notifyNewPullRequests(repo: GiteaRepository, prs: any[]): void {
         try {
             const count = prs.length;
             const title = count === 1 ? 'New Pull Request' : `${count} New Pull Requests`;
@@ -258,7 +224,7 @@ class NotificationManager {
                 if (selection === 'View in VS Code') {
                     vscode.commands.executeCommand('workbench.view.extension.gitea-explorer')
                         .then(() => vscode.commands.executeCommand('gitea.pullRequests.focus'))
-                        .catch(err => console.error('Failed to focus pull requests view:', err));
+                        .then(undefined, err => console.error('Failed to focus pull requests view:', err));
                 } else if (selection === 'Open in Browser') {
                     vscode.commands.executeCommand('gitea.openPullRequestInBrowser', prItem)
                         .then(undefined, err => console.error('Failed to open PR in browser:', err));
@@ -269,18 +235,15 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Show notification for new commits
-     */
-    notifyNewCommits(repo, commits) {
+    notifyNewCommits(repo: GiteaRepository, commits: any[]): void {
         try {
             const count = commits.length;
             const title = count === 1 ? 'New Commit' : `${count} New Commits`;
             const message = `${title} in ${repo.full_name}`;
 
             const firstCommit = commits[0];
-            const commitUrl = firstCommit.html_url || firstCommit.url || firstCommit.htmlUrl;
-            const actions = commitUrl ? ['Open in Browser', 'Copy SHA', 'Dismiss'] : ['Copy SHA', 'Dismiss'];
+            const commitUrl: string | undefined = firstCommit.html_url || firstCommit.url || firstCommit.htmlUrl;
+            const actions: string[] = commitUrl ? ['Open in Browser', 'Copy SHA', 'Dismiss'] : ['Copy SHA', 'Dismiss'];
 
             vscode.window.showInformationMessage(message, ...actions).then(async selection => {
                 if (selection === 'Open in Browser' && commitUrl) {
@@ -295,32 +258,25 @@ class NotificationManager {
         }
     }
 
-    /**
-     * Toggle monitoring state
-     */
-    async toggleMonitoring() {
+    async toggleMonitoring(): Promise<void> {
         try {
             if (this.isMonitoring) {
                 this.stopMonitoring();
             } else {
                 await this.startMonitoring();
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to toggle monitoring:', error);
             vscode.window.showErrorMessage(`Failed to toggle monitoring: ${error.message}`);
         }
     }
 
-    /**
-     * Get monitoring status
-     */
-    getStatus() {
+    getStatus(): NotificationStatus {
         return {
             isMonitoring: this.isMonitoring,
             pollInterval: this.pollInterval
         };
     }
-
 }
 
-module.exports = NotificationManager;
+export default NotificationManager;

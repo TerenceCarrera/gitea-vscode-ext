@@ -1,8 +1,11 @@
-const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs');
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { repositoryProvider } = deps;
 
     const configureCommand = vscode.commands.registerCommand('gitea.configure', async () => {
@@ -69,7 +72,7 @@ function registerCommands(context, auth, deps) {
             let selectedOrg = null;
 
             if (orgs && orgs.length > 1) {
-                const orgOptions = orgs.map(org => ({
+                const orgOptions: { label: string; detail: string; value: any }[] = orgs.map(org => ({
                     label: org.full_name || org.username,
                     detail: org.username,
                     value: org
@@ -88,7 +91,7 @@ function registerCommands(context, auth, deps) {
             const repoName = await vscode.window.showInputBox({
                 prompt: 'Repository name',
                 placeHolder: 'my-new-repo',
-                validateInput: (value) => {
+                validateInput: (value: string) => {
                     if (!value) return 'Repository name is required';
                     if (!/^[a-zA-Z0-9_-]+$/.test(value)) return 'Invalid characters. Use only alphanumeric, underscore, and dash.';
                     return null;
@@ -131,7 +134,7 @@ function registerCommands(context, auth, deps) {
         try {
             const repo = item.repository;
             const config = vscode.workspace.getConfiguration('gitea');
-            const defaultPath = config.get('defaultRepoStartingPath') || path.join(require('os').homedir(), 'source', 'repos');
+            const defaultPath: string = (config.get('defaultRepoStartingPath') as string) || path.join(os.homedir(), 'source', 'repos');
             const repoPath = vscode.Uri.file(path.join(defaultPath, repo.full_name));
 
             const pathExists = fs.existsSync(repoPath.fsPath);
@@ -166,7 +169,7 @@ function registerCommands(context, auth, deps) {
                 }
             } else {
                 const workspaceFolders = vscode.workspace.workspaceFolders || [];
-                const isAlreadyOpen = workspaceFolders.some(folder =>
+                const isAlreadyOpen = workspaceFolders.some((folder: vscode.WorkspaceFolder) =>
                     folder.uri.fsPath === repoPath.fsPath
                 );
 
@@ -213,5 +216,3 @@ function registerCommands(context, auth, deps) {
         openInBrowserCommand
     );
 }
-
-module.exports = { registerCommands };

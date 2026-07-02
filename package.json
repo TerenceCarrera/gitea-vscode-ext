@@ -2,9 +2,10 @@
     "name": "gitea",
     "displayName": "Gitea",
     "description": "Unofficial Gitea Extension for VS Code",
-    "version": "0.3.1",
+    "version": "0.4.0",
     "publisher": "TerenceCarrera",
-    "license": "GPL-3.0-only",
+    "private": true,
+    "license": "SEE LICENSE IN LICENSE",
     "repository": {
         "url": "https://github.com/terence-carrera/gitea-vscode"
     },
@@ -17,7 +18,7 @@
     "activationEvents": [
         "onStartupFinished"
     ],
-    "main": "./extension.js",
+    "main": "./out/extension.js",
     "icon": "media/gitea-logo-marketplace.png",
     "contributes": {
         "commands": [
@@ -458,17 +459,22 @@
         }
     },
     "scripts": {
+        "build": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
         "lint": "eslint .",
-        "pretest": "npm run lint",
-        "test": "vscode-test"
+        "pretest": "npm run build && npm run lint",
+        "test": "node ./out/test/extension.test.js"
     },
     "devDependencies": {
-        "@types/vscode": "^1.90.0",
         "@types/mocha": "^10.0.10",
-        "@types/node": "22.x",
-        "eslint": "^9.39.1",
+        "@types/node": "^22.20.0",
+        "@types/vscode": "^1.90.0",
+        "@typescript-eslint/eslint-plugin": "^8.62.1",
+        "@typescript-eslint/parser": "^8.62.1",
         "@vscode/test-cli": "^0.0.12",
-        "@vscode/test-electron": "^2.5.2"
+        "@vscode/test-electron": "^2.5.2",
+        "eslint": "^9.39.1",
+        "typescript": "^6.0.3"
     },
     "dependencies": {
         "marked": "^12.0.0",

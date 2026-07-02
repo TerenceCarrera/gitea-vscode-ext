@@ -1,6 +1,8 @@
-const vscode = require('vscode');
+import * as vscode from 'vscode';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { stashManager, versionInfoProvider } = deps;
 
     const manageStashCommand = vscode.commands.registerCommand('gitea.manageStash', async () => {
@@ -26,5 +28,3 @@ function registerCommands(context, auth, deps) {
         showVersionInfoCommand
     );
 }
-
-module.exports = { registerCommands };

@@ -1,7 +1,9 @@
-const vscode = require('vscode');
-const { filterRepositoriesByWorkspace } = require('../treeProviders');
+import * as vscode from 'vscode';
+import { filterRepositoriesByWorkspace } from '../treeProviders';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { pullRequestProvider, prCreationProvider, prWebviewProvider, promptNoWorkspaceRepos, getShowAllReposWhenNoWorkspace } = deps;
 
     const searchPullRequestsCommand = vscode.commands.registerCommand('gitea.searchPullRequests', async () => {
@@ -95,5 +97,3 @@ function registerCommands(context, auth, deps) {
         viewPullRequestDetailsCommand
     );
 }
-
-module.exports = { registerCommands };
