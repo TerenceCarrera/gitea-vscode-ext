@@ -1,7 +1,9 @@
-const vscode = require('vscode');
-const { filterRepositoriesByWorkspace } = require('../treeProviders');
+import * as vscode from 'vscode';
+import { filterRepositoriesByWorkspace } from '../treeProviders';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { branchManager, deletedBranchesProvider } = deps;
 
     const switchBranchCommand = vscode.commands.registerCommand('gitea.switchBranch', async (item) => {
@@ -112,7 +114,7 @@ function registerCommands(context, auth, deps) {
             const selectedBranch = await vscode.window.showQuickPick(
                 deletableBranches.map(b => ({ label: b, value: b })),
                 { placeHolder: 'Select branch to delete' }
-            );
+            ) as unknown as { label: string; value: string } | undefined;
 
             if (!selectedBranch) return;
 
@@ -250,7 +252,7 @@ function registerCommands(context, auth, deps) {
 
             if (confirm === 'Yes') {
                 const deleted = branchManager.getDeletedBranches(treeItem.repoPath);
-                const filtered = deleted.filter(b => b.name !== treeItem.branchName);
+                const filtered = deleted.filter((b: { name: string }) => b.name !== treeItem.branchName);
                 branchManager.deletedBranches.set(treeItem.repoPath, filtered);
                 await branchManager.saveDeletionHistory();
                 deletedBranchesProvider.refresh();
@@ -322,5 +324,3 @@ function registerCommands(context, auth, deps) {
         importDeletionHistoryCommand
     );
 }
-
-module.exports = { registerCommands };

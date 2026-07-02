@@ -1,17 +1,17 @@
-const vscode = require('vscode');
-const GiteaAuth = require('./features/auth');
-const { RepositoryProvider, IssueProvider, PullRequestProvider } = require('./features/treeProviders');
-const { PullRequestWebviewProvider, IssueWebviewProvider, PullRequestCreationProvider, VersionInfoProvider } = require('./features/webviewProviders');
-const NotificationManager = require('./features/notifications');
-const BranchManager = require('./features/branches');
-const DeletedBranchesProvider = require('./features/deletedBranchesProvider');
-const StashManager = require('./features/stash');
-const { throttle } = require('./features/performanceOptimizer');
-const { registerAllCommands } = require('./features/commands');
+import * as vscode from 'vscode';
+import GiteaAuth from './features/auth';
+import { RepositoryProvider, IssueProvider, PullRequestProvider } from './features/treeProviders';
+import { PullRequestWebviewProvider, IssueWebviewProvider, PullRequestCreationProvider, VersionInfoProvider } from './features/webviewProviders';
+import NotificationManager from './features/notifications';
+import BranchManager from './features/branches';
+import DeletedBranchesProvider from './features/deletedBranchesProvider';
+import { StashManager } from './features/stash';
+import { throttle } from './features/performanceOptimizer';
+import { registerAllCommands } from './features/commands';
 
-let _notificationManager = null;
+let _notificationManager: NotificationManager | null = null;
 
-async function activate(context) {
+export async function activate(context: vscode.ExtensionContext) {
     try {
         const auth = new GiteaAuth();
         await auth.initialize();
@@ -48,7 +48,7 @@ async function activate(context) {
             return !!config.get('showAllReposWhenNoWorkspace', false);
         };
 
-        const promptNoWorkspaceRepos = async (allRepos) => {
+        const promptNoWorkspaceRepos = async (allRepos: any[]) => {
             if (hasPromptedNoWorkspaceRepos) return null;
             hasPromptedNoWorkspaceRepos = true;
 
@@ -206,20 +206,15 @@ async function activate(context) {
                 await vscode.commands.executeCommand('gitea.configure');
             }
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Failed to activate Gitea extension:', error);
         vscode.window.showErrorMessage(`Failed to activate Gitea extension: ${error.message}`);
     }
 }
 
-function deactivate() {
+export function deactivate() {
     if (_notificationManager) {
         _notificationManager.stopMonitoring();
         _notificationManager = null;
     }
 }
-
-module.exports = {
-    activate,
-    deactivate
-};

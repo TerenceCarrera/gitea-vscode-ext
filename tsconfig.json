@@ -1,0 +1,31 @@
+{
+    "compilerOptions": {
+        "module": "Node16",
+        "target": "ES2022",
+        "lib": ["ES2022"],
+        "types": ["node", "mocha"],
+        "outDir": "./out",
+        "rootDir": ".",
+        "sourceMap": true,
+        "strict": false,
+        "noImplicitAny": false,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "moduleResolution": "Node16",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "declaration": true
+    },
+    "include": [
+        "extension.ts",
+        "features/**/*.ts",
+        "test/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "out",
+        ".vscode-test"
+    ]
+}

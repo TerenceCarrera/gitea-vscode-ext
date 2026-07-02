@@ -1,16 +1,16 @@
-const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs');
-const { execFileSync, execSync } = require('child_process');
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { execFileSync, execSync } from 'child_process';
 
-function getRepoScanDepth() {
+export function getRepoScanDepth(): number {
     const config = vscode.workspace.getConfiguration('gitea');
     const depth = Number(config.get('repoScanDepth', 2));
     if (Number.isFinite(depth) && depth >= 0) return Math.floor(depth);
     return 2;
 }
 
-function resolveGitConfigPath(repoPath) {
+export function resolveGitConfigPath(repoPath: string): string | null {
     const gitEntryPath = path.join(repoPath, '.git');
     if (!fs.existsSync(gitEntryPath)) return null;
 
@@ -42,8 +42,8 @@ function resolveGitConfigPath(repoPath) {
     }
 }
 
-function findGitReposInDir(dirPath, depth) {
-    const foundRepos = [];
+export function findGitReposInDir(dirPath: string, depth: number): string[] {
+    const foundRepos: string[] = [];
     if (depth < 0) return foundRepos;
     try {
         const gitPath = path.join(dirPath, '.git');
@@ -61,15 +61,7 @@ function findGitReposInDir(dirPath, depth) {
     return foundRepos;
 }
 
-/**
- * Set user.name and user.email in the local git config of every workspace folder
- * that is a git repository. Silently skips folders without a .git directory.
- *
- * @param {string[]} folders     Absolute paths of workspace folders
- * @param {string}   [userName]  Git user.name (skipped if empty)
- * @param {string}   [userEmail] Git user.email (skipped if empty)
- */
-function setGitUserConfig(folders, userName, userEmail) {
+export function setGitUserConfig(folders: string[], userName?: string, userEmail?: string): void {
     if (!userName && !userEmail) return;
 
     for (const folderPath of folders) {
@@ -98,10 +90,3 @@ function setGitUserConfig(folders, userName, userEmail) {
         }
     }
 }
-
-module.exports = {
-    getRepoScanDepth,
-    resolveGitConfigPath,
-    findGitReposInDir,
-    setGitUserConfig
-};

@@ -1,8 +1,10 @@
-const vscode = require('vscode');
-const { syncProfileToGitea, restoreProfileFromGitea } = require('../profileSync');
-const { setGitUserConfig } = require('../gitUtils');
+import * as vscode from 'vscode';
+import { syncProfileToGitea, restoreProfileFromGitea } from '../profileSync';
+import { setGitUserConfig } from '../gitUtils';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { throttledRefresh, giteaStatusBar } = deps;
 
     const addProfileCommand = vscode.commands.registerCommand('gitea.addProfile', async () => {
@@ -79,7 +81,7 @@ function registerCommands(context, auth, deps) {
                 {
                     label: assignedName ? '$(close) None (clear)' : '$(check) None (clear)',
                     description: 'Do not associate any profile with this workspace',
-                    value: null
+                    value: null as string | null
                 },
                 ...profiles.map(p => ({
                     label: p.isActive ? `$(check) ${p.name}` : p.name,
@@ -100,7 +102,7 @@ function registerCommands(context, auth, deps) {
                 await auth.setWorkspaceProfile(selected.value);
 
                 if (selected.value) {
-                    const profile = auth.listProfiles().find(p => p.name === selected.value);
+                    const profile = auth.listProfiles().find((p: { name: string }) => p.name === selected.value);
                     if (profile) {
                         auth.activeProfile = selected.value;
                         auth.instanceUrl = profile.url;
@@ -111,12 +113,12 @@ function registerCommands(context, auth, deps) {
                     }
                 }
 
-                const folders = vscode.workspace.workspaceFolders;
-                if (folders && selected.value) {
+                const wsfolders = vscode.workspace.workspaceFolders;
+                if (wsfolders && selected.value) {
                     const profileData = auth.profiles[selected.value];
                     if (profileData && (profileData.userName || profileData.userEmail)) {
                         setGitUserConfig(
-                            folders.map(f => f.uri.fsPath),
+                            wsfolders.map(f => f.uri.fsPath),
                             profileData.userName,
                             profileData.userEmail
                         );
@@ -149,5 +151,3 @@ function registerCommands(context, auth, deps) {
         setWorkspaceProfileCommand
     );
 }
-
-module.exports = { registerCommands };

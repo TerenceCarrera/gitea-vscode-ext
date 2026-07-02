@@ -1,47 +1,65 @@
-const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs');
-const { execSync, execFileSync } = require('child_process');
-const { findGitReposInDir, getRepoScanDepth } = require('./gitUtils');
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { execSync, execFileSync } from 'child_process';
+import { findGitReposInDir, getRepoScanDepth } from './gitUtils';
+import GiteaAuth from './auth';
+import { DeletedBranchInfo } from './types';
+
+interface BranchQuickPickItem extends vscode.QuickPickItem {
+    value: string;
+}
+
+interface DeletedBranchQuickPickItem extends vscode.QuickPickItem {
+    branch: DeletedBranchInfo;
+}
+
+interface DiffFileItem extends vscode.QuickPickItem {
+    value: string;
+    file?: string;
+    status?: string;
+}
+
+interface DeletedBranchActionItem extends vscode.QuickPickItem {
+    value: string;
+}
+
+interface MergeOptionItem extends vscode.QuickPickItem {
+    value: string;
+}
 
 class BranchManager {
-    constructor(auth, context) {
+    auth: GiteaAuth;
+    context: vscode.ExtensionContext;
+    deletedBranches: Map<string, DeletedBranchInfo[]>;
+    _savePromise?: Promise<void>;
+
+    constructor(auth: GiteaAuth, context: vscode.ExtensionContext) {
         this.auth = auth;
         this.context = context;
-        // Track deleted branches: { repoPath: [{ name, commit, deletedAt }] }
         this.deletedBranches = new Map();
 
-        // Enable syncing of deletion history across machines via VS Code Settings Sync
-        // This allows the deletion history to sync without cluttering the settings UI
         this.context.globalState.setKeysForSync(['gitea.deletedBranches']);
 
-        // Load persisted deletion history
         this.loadDeletionHistory();
     }
 
-    /**
-     * Load deletion history from persistent storage
-     */
-    loadDeletionHistory() {
+    loadDeletionHistory(): void {
         try {
-            const stored = this.context.globalState.get('giteaDeletedBranches', {});
+            const stored: Record<string, DeletedBranchInfo[]> = this.context.globalState.get('giteaDeletedBranches', {});
             for (const [repoPath, deletions] of Object.entries(stored)) {
                 this.deletedBranches.set(repoPath, deletions);
             }
-            // Clean up old deletions based on retention period
             this.cleanupOldDeletions();
         } catch (error) {
             console.error('Failed to load deletion history:', error);
         }
     }
 
-    /**
-     * Save deletion history to persistent storage (serialized to prevent race conditions)
-     */
-    saveDeletionHistory() {
+    saveDeletionHistory(): Promise<void> {
         this._savePromise = (this._savePromise || Promise.resolve()).then(async () => {
             try {
-                const toStore = {};
+                const toStore: Record<string, DeletedBranchInfo[]> = {};
                 for (const [repoPath, deletions] of this.deletedBranches.entries()) {
                     toStore[repoPath] = deletions;
                 }
@@ -53,13 +71,10 @@ class BranchManager {
         return this._savePromise;
     }
 
-    /**
-     * Clean up deletions older than retention period
-     */
-    cleanupOldDeletions() {
+    cleanupOldDeletions(): void {
         try {
             const config = vscode.workspace.getConfiguration('gitea');
-            const retentionDays = config.get('branchDeletionRetentionDays', 90);
+            const retentionDays: number = config.get('branchDeletionRetentionDays', 90);
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
@@ -75,18 +90,12 @@ class BranchManager {
         }
     }
 
-    /**
-     * Get the repository path from the current workspace
-     * @param {string} repoName - Repository name in format "owner/repo"
-     * @returns {string|null} - Absolute path to the repository or null if not found
-     */
-    getRepositoryPath(repoName) {
+    getRepositoryPath(repoName: string): string | null {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) return null;
 
         const repoNameLower = repoName.toLowerCase();
 
-        // Search through all workspace folders and their subdirectories
         for (const folder of workspaceFolders) {
             const folderPath = folder.uri.fsPath;
             const gitRepoPaths = findGitReposInDir(folderPath, getRepoScanDepth());
@@ -96,7 +105,6 @@ class BranchManager {
                 if (fs.existsSync(gitConfigPath)) {
                     try {
                         const config = fs.readFileSync(gitConfigPath, 'utf8').toLowerCase();
-                        // Match against various formats: full path, .git suffix, or just repo name
                         if (config.includes(`/${repoNameLower}`) ||
                             config.includes(`/${repoNameLower}.git`) ||
                             config.includes(`:${repoNameLower}.git`) ||
@@ -104,7 +112,6 @@ class BranchManager {
                             return repoPath;
                         }
                     } catch {
-                        // Ignore read errors
                     }
                 }
             }
@@ -112,12 +119,7 @@ class BranchManager {
         return null;
     }
 
-    /**
-     * Get all branches for a repository
-     * @param {string} repoPath - Path to the repository
-     * @returns {Promise<Array>} - Array of branch names
-     */
-    async getBranches(repoPath) {
+    async getBranches(repoPath: string): Promise<string[]> {
         try {
             const result = execSync('git branch -a', { cwd: repoPath, encoding: 'utf8' });
             const branches = result
@@ -127,19 +129,14 @@ class BranchManager {
                     const branch = line.replace(/^\*?\s+/, '').replace(/^remotes\/origin\//, '');
                     return branch;
                 })
-                .filter((branch, index, arr) => arr.indexOf(branch) === index); // Remove duplicates
+                .filter((branch, index, arr) => arr.indexOf(branch) === index);
             return branches;
         } catch (error) {
-            throw new Error(`Failed to get branches: ${error.message}`);
+            throw new Error(`Failed to get branches: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Get the current branch
-     * @param {string} repoPath - Path to the repository
-     * @returns {string} - Current branch name
-     */
-    async getCurrentBranch(repoPath) {
+    async getCurrentBranch(repoPath: string): Promise<string> {
         try {
             const branch = execSync('git rev-parse --abbrev-ref HEAD', {
                 cwd: repoPath,
@@ -147,33 +144,20 @@ class BranchManager {
             }).trim();
             return branch;
         } catch (error) {
-            throw new Error(`Failed to get current branch: ${error.message}`);
+            throw new Error(`Failed to get current branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Checkout a branch
-     * @param {string} repoPath - Path to the repository
-     * @param {string} branchName - Branch to checkout
-     * @returns {Promise<void>}
-     */
-    async checkoutBranch(repoPath, branchName) {
+    async checkoutBranch(repoPath: string, branchName: string): Promise<void> {
         try {
             execFileSync('git', ['checkout', branchName], { cwd: repoPath, stdio: 'pipe' });
             vscode.window.showInformationMessage(`Switched to branch: ${branchName}`);
         } catch (error) {
-            throw new Error(`Failed to checkout branch: ${error.message}`);
+            throw new Error(`Failed to checkout branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Create a new branch
-     * @param {string} repoPath - Path to the repository
-     * @param {string} branchName - Name for the new branch
-     * @param {string} baseBranch - Branch to create from (optional, defaults to current)
-     * @returns {Promise<void>}
-     */
-    async createBranch(repoPath, branchName, baseBranch = null) {
+    async createBranch(repoPath: string, branchName: string, baseBranch?: string | null): Promise<void> {
         try {
             if (baseBranch) {
                 execFileSync('git', ['checkout', '-b', branchName, baseBranch], {
@@ -188,17 +172,11 @@ class BranchManager {
             }
             vscode.window.showInformationMessage(`Branch created: ${branchName}`);
         } catch (error) {
-            throw new Error(`Failed to create branch: ${error.message}`);
+            throw new Error(`Failed to create branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Create a branch from an issue
-     * @param {string} repoName - Repository in format "owner/repo"
-     * @param {number} issueNumber - Issue number
-     * @returns {Promise<void>}
-     */
-    async createBranchFromIssue(repoName, issueNumber) {
+    async createBranchFromIssue(repoName: string, issueNumber: number): Promise<void> {
         try {
             const repoPath = this.getRepositoryPath(repoName);
             if (!repoPath) {
@@ -208,7 +186,6 @@ class BranchManager {
             const [owner, repo] = repoName.split('/');
             const issue = await this.auth.makeRequest(`/api/v1/repos/${owner}/${repo}/issues/${issueNumber}`);
 
-            // Generate branch name from issue
             const branchName = await vscode.window.showInputBox({
                 prompt: 'Branch name',
                 placeHolder: `issue/${issueNumber}-${this.sanitizeBranchName(issue.title)}`,
@@ -217,7 +194,6 @@ class BranchManager {
 
             if (!branchName) return;
 
-            // Get base branch
             const branches = await this.getBranches(repoPath);
             const baseBranch = await vscode.window.showQuickPick(branches, {
                 placeHolder: 'Select base branch'
@@ -227,17 +203,11 @@ class BranchManager {
 
             await this.createBranch(repoPath, branchName, baseBranch);
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to create branch from issue: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to create branch from issue: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Create a branch from a pull request
-     * @param {string} repoName - Repository in format "owner/repo"
-     * @param {number} prNumber - Pull request number
-     * @returns {Promise<void>}
-     */
-    async createBranchFromPullRequest(repoName, prNumber) {
+    async createBranchFromPullRequest(repoName: string, prNumber: number): Promise<void> {
         try {
             const repoPath = this.getRepositoryPath(repoName);
             if (!repoPath) {
@@ -247,7 +217,6 @@ class BranchManager {
             const [owner, repo] = repoName.split('/');
             const pr = await this.auth.makeRequest(`/api/v1/repos/${owner}/${repo}/pulls/${prNumber}`);
 
-            // Generate branch name from PR
             const branchName = await vscode.window.showInputBox({
                 prompt: 'Branch name',
                 placeHolder: `feature/pr-${prNumber}-${this.sanitizeBranchName(pr.title)}`,
@@ -256,18 +225,17 @@ class BranchManager {
 
             if (!branchName) return;
 
-            // Offer to use PR's source branch or create new
             const action = await vscode.window.showQuickPick(
                 [
                     { label: 'Create from PR source branch', value: 'source' },
                     { label: 'Create from main/develop', value: 'develop' }
-                ],
+                ] as DeletedBranchActionItem[],
                 { placeHolder: 'How would you like to create the branch?' }
             );
 
             if (!action) return;
 
-            let baseBranch;
+            let baseBranch: string | undefined;
             if (action.value === 'source') {
                 baseBranch = pr.head?.ref || 'main';
             } else {
@@ -280,16 +248,11 @@ class BranchManager {
 
             await this.createBranch(repoPath, branchName, baseBranch);
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to create branch from PR: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to create branch from PR: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Switch branches with quick pick
-     * @param {string} repoName - Repository in format "owner/repo"
-     * @returns {Promise<void>}
-     */
-    async switchBranch(repoName) {
+    async switchBranch(repoName: string): Promise<void> {
         try {
             const repoPath = this.getRepositoryPath(repoName);
             if (!repoPath) {
@@ -299,7 +262,7 @@ class BranchManager {
             const branches = await this.getBranches(repoPath);
             const currentBranch = await this.getCurrentBranch(repoPath);
 
-            const items = branches.map(branch => ({
+            const items: BranchQuickPickItem[] = branches.map(branch => ({
                 label: branch === currentBranch ? `$(check) ${branch}` : branch,
                 description: branch === currentBranch ? 'current' : '',
                 value: branch
@@ -313,16 +276,11 @@ class BranchManager {
                 await this.checkoutBranch(repoPath, selected.value);
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to switch branch: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to switch branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Sanitize a string to be a valid git branch name
-     * @param {string} str - String to sanitize
-     * @returns {string} - Sanitized string
-     */
-    sanitizeBranchName(str) {
+    sanitizeBranchName(str: string): string {
         return str
             .toLowerCase()
             .replace(/\s+/g, '-')
@@ -332,94 +290,63 @@ class BranchManager {
             .substring(0, 50);
     }
 
-    /**
-     * Delete a branch (with tracking for restore)
-     * @param {string} repoPath - Path to the repository
-     * @param {string} branchName - Name of the branch to delete
-     * @param {boolean} force - Force delete (even if not merged)
-     * @returns {Promise<void>}
-     */
-    async deleteBranch(repoPath, branchName, force = false) {
+    async deleteBranch(repoPath: string, branchName: string, force: boolean = false): Promise<void> {
         try {
-            // Get the commit SHA before deleting
             const commitSha = execFileSync('git', ['rev-parse', branchName], {
                 cwd: repoPath,
                 encoding: 'utf8'
             }).trim();
 
-            // Delete the branch
             const deleteFlag = force ? '-D' : '-d';
             execFileSync('git', ['branch', deleteFlag, branchName], {
                 cwd: repoPath,
                 stdio: 'pipe'
             });
 
-            // Track the deletion
             if (!this.deletedBranches.has(repoPath)) {
                 this.deletedBranches.set(repoPath, []);
             }
 
-            this.deletedBranches.get(repoPath).push({
+            this.deletedBranches.get(repoPath)!.push({
                 name: branchName,
                 commit: commitSha,
                 deletedAt: new Date().toISOString(),
                 deletedBy: 'extension'
             });
 
-            // Save to persistent storage
             await this.saveDeletionHistory();
 
             vscode.window.showInformationMessage(`Branch deleted: ${branchName}`);
         } catch (error) {
-            throw new Error(`Failed to delete branch: ${error.message}`);
+            throw new Error(`Failed to delete branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Get recently deleted branches for a repository
-     * @param {string} repoPath - Path to the repository
-     * @returns {Array} - Array of deleted branch info
-     */
-    getDeletedBranches(repoPath) {
+    getDeletedBranches(repoPath: string): DeletedBranchInfo[] {
         return this.deletedBranches.get(repoPath) || [];
     }
 
-    /**
-     * Restore a deleted branch
-     * @param {string} repoPath - Path to the repository
-     * @param {string} branchName - Name of the branch to restore
-     * @param {string} commitSha - Commit SHA to restore from
-     * @returns {Promise<void>}
-     */
-    async restoreBranch(repoPath, branchName, commitSha) {
+    async restoreBranch(repoPath: string, branchName: string, commitSha: string): Promise<void> {
         try {
-            // Create the branch at the commit SHA
             execFileSync('git', ['branch', branchName, commitSha], {
                 cwd: repoPath,
                 stdio: 'pipe'
             });
 
-            // Remove from deleted branches tracking
             if (this.deletedBranches.has(repoPath)) {
-                const deleted = this.deletedBranches.get(repoPath);
+                const deleted = this.deletedBranches.get(repoPath)!;
                 const filtered = deleted.filter(b => b.name !== branchName);
                 this.deletedBranches.set(repoPath, filtered);
-                // Save updated history
                 await this.saveDeletionHistory();
             }
 
             vscode.window.showInformationMessage(`Branch restored: ${branchName}`);
         } catch (error) {
-            throw new Error(`Failed to restore branch: ${error.message}`);
+            throw new Error(`Failed to restore branch: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Show deleted branches and allow restoration
-     * @param {string} repoName - Repository in format "owner/repo"
-     * @returns {Promise<void>}
-     */
-    async showDeletedBranches(repoName) {
+    async showDeletedBranches(repoName: string): Promise<void> {
         try {
             const repoPath = this.getRepositoryPath(repoName);
             if (!repoPath) {
@@ -433,8 +360,7 @@ class BranchManager {
                 return;
             }
 
-            // Show quick pick with deleted branches
-            const items = deleted.map(branch => ({
+            const items: DeletedBranchQuickPickItem[] = deleted.map(branch => ({
                 label: `$(git-branch) ${branch.name}`,
                 description: `Deleted ${new Date(branch.deletedAt).toLocaleString()}`,
                 detail: `Commit: ${branch.commit.substring(0, 7)}`,
@@ -446,55 +372,49 @@ class BranchManager {
             });
 
             if (selected) {
-                const confirm = await vscode.window.showQuickPick(['Yes', 'No'], {
-                    placeHolder: `Restore branch "${selected.branch.name}"?`
-                });
+                const confirm = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Yes', value: 'Yes' },
+                        { label: 'No', value: 'No' }
+                    ] as DeletedBranchActionItem[],
+                    {
+                        placeHolder: `Restore branch "${selected.branch.name}"?`
+                    }
+                );
 
-                if (confirm === 'Yes') {
+                if (confirm?.value === 'Yes') {
                     await this.restoreBranch(repoPath, selected.branch.name, selected.branch.commit);
                 }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to show deleted branches: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to show deleted branches: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Alternative method: Restore from reflog (for branches deleted outside the extension)
-     * @param {string} repoName - Repository in format "owner/repo"
-     * @returns {Promise<void>}
-     */
-    async restoreFromReflog(repoName) {
+    async restoreFromReflog(repoName: string): Promise<void> {
         try {
             const repoPath = this.getRepositoryPath(repoName);
             if (!repoPath) {
                 throw new Error('Repository not found in workspace');
             }
 
-            // Get comprehensive reflog entries
             const reflog = execSync('git reflog --all --date=iso --no-abbrev-commit', {
                 cwd: repoPath,
                 encoding: 'utf8',
-                maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large histories
+                maxBuffer: 10 * 1024 * 1024
             });
 
             const lines = reflog.split('\n').filter(line => line.trim());
-            const deletions = [];
-            const seenBranches = new Set();
+            const deletions: DeletedBranchInfo[] = [];
+            const seenBranches = new Set<string>();
 
-            // Enhanced patterns for branch deletion detection
             const patterns = [
-                // Standard branch deletion
                 /^([a-f0-9]+).*?branch: deleted ([\w\-\/\.]+)/i,
-                // Remote branch deletion
                 /^([a-f0-9]+).*?deleted remote[\s-](?:tracking )?branch ([\w\-\/\.]+)/i,
-                // Force delete
                 /^([a-f0-9]+).*?branch: (?:force[\s-])?deleted ([\w\-\/\.]+)/i,
-                // Update-ref deletions
                 /^([a-f0-9]+).*?update-ref.*?delete.*?refs\/heads\/([\w\-\/\.]+)/i
             ];
 
-            // Parse reflog for branch deletions with multiple patterns
             for (const line of lines) {
                 for (const pattern of patterns) {
                     const match = line.match(pattern);
@@ -503,7 +423,6 @@ class BranchManager {
                         const dateMatch = line.match(/\{(.+?)\}/);
                         const deletedAt = dateMatch ? dateMatch[1] : 'Unknown date';
 
-                        // Avoid duplicates
                         const key = `${branchName}:${commit.substring(0, 7)}`;
                         if (!seenBranches.has(key)) {
                             seenBranches.add(key);
@@ -524,8 +443,7 @@ class BranchManager {
                 return;
             }
 
-            // Show quick pick with found deletions
-            const items = deletions.map(branch => ({
+            const items: DeletedBranchQuickPickItem[] = deletions.map(branch => ({
                 label: `$(git-branch) ${branch.name}`,
                 description: `Deleted ${branch.deletedAt}`,
                 detail: `Commit: ${branch.commit.substring(0, 7)}`,
@@ -537,26 +455,28 @@ class BranchManager {
             });
 
             if (selected) {
-                const confirm = await vscode.window.showQuickPick(['Yes', 'No'], {
-                    placeHolder: `Restore branch "${selected.branch.name}"?`
-                });
+                const confirm = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Yes', value: 'Yes' },
+                        { label: 'No', value: 'No' }
+                    ] as DeletedBranchActionItem[],
+                    {
+                        placeHolder: `Restore branch "${selected.branch.name}"?`
+                    }
+                );
 
-                if (confirm === 'Yes') {
+                if (confirm?.value === 'Yes') {
                     await this.restoreBranch(repoPath, selected.branch.name, selected.branch.commit);
                 }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to restore from reflog: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to restore from reflog: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Export deletion history to a JSON file
-     * @returns {Promise<void>}
-     */
-    async exportDeletionHistory() {
+    async exportDeletionHistory(): Promise<void> {
         try {
-            const history = {};
+            const history: Record<string, DeletedBranchInfo[]> = {};
             for (const [repoPath, deletions] of this.deletedBranches.entries()) {
                 history[repoPath] = deletions;
             }
@@ -569,7 +489,6 @@ class BranchManager {
 
             const content = JSON.stringify(exportData, null, 2);
 
-            // Prompt user to save file
             const uri = await vscode.window.showSaveDialog({
                 defaultUri: vscode.Uri.file(`gitea-deleted-branches-${Date.now()}.json`),
                 filters: {
@@ -583,17 +502,12 @@ class BranchManager {
                 vscode.window.showInformationMessage(`Deletion history exported to ${uri.fsPath}`);
             }
         } catch (error) {
-            throw new Error(`Failed to export deletion history: ${error.message}`);
+            throw new Error(`Failed to export deletion history: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Import deletion history from a JSON file
-     * @returns {Promise<void>}
-     */
-    async importDeletionHistory() {
+    async importDeletionHistory(): Promise<void> {
         try {
-            // Prompt user to select file
             const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
                 canSelectFolders: false,
@@ -608,7 +522,7 @@ class BranchManager {
             if (!uris || uris.length === 0) return;
 
             const content = await vscode.workspace.fs.readFile(uris[0]);
-            let importData;
+            let importData: { version: string; deletionHistory: Record<string, DeletedBranchInfo[]> };
             try {
                 importData = JSON.parse(content.toString());
             } catch {
@@ -619,12 +533,11 @@ class BranchManager {
                 throw new Error('Invalid deletion history file format');
             }
 
-            // Ask user how to handle existing history
             const mergeOption = await vscode.window.showQuickPick(
                 [
                     { label: 'Merge with existing history', value: 'merge', description: 'Add imported entries to current history' },
                     { label: 'Replace existing history', value: 'replace', description: 'Clear current history and use imported data' }
-                ],
+                ] as MergeOptionItem[],
                 { placeHolder: 'How would you like to import the deletion history?' }
             );
 
@@ -634,14 +547,12 @@ class BranchManager {
                 this.deletedBranches.clear();
             }
 
-            // Import the history
             let importCount = 0;
             for (const [repoPath, deletions] of Object.entries(importData.deletionHistory)) {
                 if (mergeOption.value === 'merge' && this.deletedBranches.has(repoPath)) {
-                    const existing = this.deletedBranches.get(repoPath);
-                    const merged = [...existing];
+                    const existing = this.deletedBranches.get(repoPath)!;
+                    const merged: DeletedBranchInfo[] = [...existing];
 
-                    // Add new deletions that don't already exist
                     for (const deletion of deletions) {
                         const exists = existing.some(e =>
                             e.name === deletion.name && e.commit === deletion.commit
@@ -658,27 +569,17 @@ class BranchManager {
                 }
             }
 
-            // Save to persistent storage
             await this.saveDeletionHistory();
             vscode.window.showInformationMessage(`Imported ${importCount} deleted branch(es) from ${uris[0].fsPath}`);
         } catch (error) {
-            throw new Error(`Failed to import deletion history: ${error.message}`);
+            throw new Error(`Failed to import deletion history: ${(error as Error).message}`);
         }
     }
 
-    /**
-     * Show diff preview before restoring a branch
-     * @param {string} repoPath - Path to the repository
-     * @param {string} branchName - Name of the branch to preview
-     * @param {string} commitSha - Commit SHA of the deleted branch
-     * @returns {Promise<boolean>} - True if user wants to proceed with restoration
-     */
-    async showDiffPreview(repoPath, branchName, commitSha) {
+    async showDiffPreview(repoPath: string, branchName: string, commitSha: string): Promise<boolean> {
         try {
-            // Get current branch
             const currentBranch = await this.getCurrentBranch(repoPath);
 
-            // Get list of files changed in the deleted branch's commit
             const diffFiles = execFileSync('git', ['diff', '--name-status', currentBranch, commitSha], {
                 cwd: repoPath,
                 encoding: 'utf8'
@@ -693,7 +594,7 @@ class BranchManager {
                 return proceed === 'Restore Anyway';
             }
 
-            const fileList = diffFiles.split('\n').map(line => {
+            const fileList: DiffFileItem[] = diffFiles.split('\n').map(line => {
                 const parts = line.split('\t');
                 const status = parts[0];
                 const file = parts[1];
@@ -718,7 +619,8 @@ class BranchManager {
                     label: `${icon} ${file}`,
                     description: statusText,
                     file: file,
-                    status: status
+                    status: status,
+                    value: 'preview'
                 };
             });
 
@@ -726,10 +628,10 @@ class BranchManager {
                 [
                     { label: '$(check) Restore Branch', description: `Restore "${branchName}" now`, value: 'restore' },
                     { label: '$(close) Cancel', description: 'Do not restore', value: 'cancel' },
-                    { label: '---', kind: vscode.QuickPickItemKind.Separator },
-                    { label: 'Preview changed files:', kind: vscode.QuickPickItemKind.Separator },
-                    ...fileList.map(f => ({ ...f, value: 'preview' }))
-                ],
+                    { label: '---', kind: vscode.QuickPickItemKind.Separator } as DiffFileItem,
+                    { label: 'Preview changed files:', kind: vscode.QuickPickItemKind.Separator } as DiffFileItem,
+                    ...fileList
+                ] as DiffFileItem[],
                 {
                     placeHolder: `Preview changes in "${branchName}" (${fileList.length} file(s) changed)`
                 }
@@ -742,9 +644,7 @@ class BranchManager {
             } else if (selectedFile.value === 'cancel') {
                 return false;
             } else if (selectedFile.value === 'preview' && selectedFile.file) {
-                // Open diff view for the selected file
                 await this.showFileDiff(repoPath, currentBranch, commitSha, selectedFile.file);
-                // Recursively show the preview again
                 return await this.showDiffPreview(repoPath, branchName, commitSha);
             }
 
@@ -752,7 +652,7 @@ class BranchManager {
         } catch (error) {
             console.error('Failed to show diff preview:', error);
             const proceed = await vscode.window.showWarningMessage(
-                `Could not generate diff preview: ${error.message}. Restore anyway?`,
+                `Could not generate diff preview: ${(error as Error).message}. Restore anyway?`,
                 'Restore',
                 'Cancel'
             );
@@ -760,14 +660,7 @@ class BranchManager {
         }
     }
 
-    /**
-     * Show diff for a specific file
-     * @param {string} repoPath - Path to the repository
-     * @param {string} currentBranch - Current branch name
-     * @param {string} commitSha - Commit SHA to compare against
-     * @param {string} filePath - File to show diff for
-     */
-    async showFileDiff(repoPath, currentBranch, commitSha, filePath) {
+    async showFileDiff(repoPath: string, currentBranch: string, commitSha: string, filePath: string): Promise<void> {
         try {
             const leftUri = vscode.Uri.parse(`git:${filePath}?${currentBranch}`);
             const rightUri = vscode.Uri.parse(`git:${filePath}?${commitSha}`);
@@ -780,10 +673,9 @@ class BranchManager {
                 { preview: true }
             );
         } catch (error) {
-            vscode.window.showWarningMessage(`Could not show diff for ${filePath}: ${error.message}`);
+            vscode.window.showWarningMessage(`Could not show diff for ${filePath}: ${(error as Error).message}`);
         }
     }
-
 }
 
-module.exports = BranchManager;
+export default BranchManager;

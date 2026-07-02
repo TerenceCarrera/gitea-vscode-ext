@@ -1,8 +1,10 @@
-const vscode = require('vscode');
-const { filterRepositoriesByWorkspace } = require('../treeProviders');
-const { showImportIssuesDialog } = require('../importIssues');
+import * as vscode from 'vscode';
+import { filterRepositoriesByWorkspace } from '../treeProviders';
+import { showImportIssuesDialog } from '../importIssues';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { issueProvider, issueWebviewProvider, promptNoWorkspaceRepos, getShowAllReposWhenNoWorkspace } = deps;
 
     const searchIssuesCommand = vscode.commands.registerCommand('gitea.searchIssues', async () => {
@@ -137,5 +139,3 @@ function registerCommands(context, auth, deps) {
         viewIssueDetailsCommand
     );
 }
-
-module.exports = { registerCommands };

@@ -1,21 +1,21 @@
-/**
- * Simple cache manager for API responses
- * Implements TTL-based cache invalidation
- */
-class CacheManager {
-    constructor(ttl = 10000) { // 10 seconds default
+interface CacheEntry<T> {
+    value: T;
+    timestamp: number;
+}
+
+export class CacheManager<T> {
+    private cache: Map<string, CacheEntry<T>>;
+    private ttl: number;
+
+    constructor(ttl = 10000) {
         this.cache = new Map();
         this.ttl = ttl;
     }
 
-    /**
-     * Get cached value if valid
-     */
-    get(key) {
+    get(key: string): T | null {
         const item = this.cache.get(key);
         if (!item) return null;
 
-        // Check if cache has expired
         if (Date.now() - item.timestamp > this.ttl) {
             this.cache.delete(key);
             return null;
@@ -24,20 +24,14 @@ class CacheManager {
         return item.value;
     }
 
-    /**
-     * Set cache value
-     */
-    set(key, value) {
+    set(key: string, value: T): void {
         this.cache.set(key, {
             value,
             timestamp: Date.now()
         });
     }
 
-    /**
-     * Clear specific key or all cache
-     */
-    clear(key = null) {
+    clear(key?: string | null): void {
         if (key) {
             this.cache.delete(key);
         } else {
@@ -45,10 +39,7 @@ class CacheManager {
         }
     }
 
-    /**
-     * Clear expired items
-     */
-    prune() {
+    prune(): void {
         const now = Date.now();
         for (const [key, item] of this.cache.entries()) {
             if (now - item.timestamp > this.ttl) {
@@ -58,27 +49,21 @@ class CacheManager {
     }
 }
 
-/**
- * Debounce utility for throttling frequent calls
- */
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
+export function debounce(func: (...args: any[]) => void, wait: number): (...args: any[]) => void {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    return function executedFunction(this: any, ...args: any[]) {
         const later = () => {
             clearTimeout(timeout);
-            func(...args);
+            func.apply(this, args);
         };
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
 }
 
-/**
- * Throttle utility for rate-limiting operations
- */
-function throttle(func, limit) {
-    let inThrottle;
-    return function (...args) {
+export function throttle(func: (...args: any[]) => void, limit: number): (...args: any[]) => void {
+    let inThrottle = false;
+    return function (this: any, ...args: any[]) {
         if (!inThrottle) {
             func.apply(this, args);
             inThrottle = true;
@@ -86,9 +71,3 @@ function throttle(func, limit) {
         }
     };
 }
-
-module.exports = {
-    CacheManager,
-    debounce,
-    throttle
-};

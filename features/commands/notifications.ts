@@ -1,6 +1,8 @@
-const vscode = require('vscode');
+import * as vscode from 'vscode';
+import type { CommandDeps } from '../types';
+import GiteaAuth from '../auth';
 
-function registerCommands(context, auth, deps) {
+export function registerCommands(context: vscode.ExtensionContext, auth: GiteaAuth, deps: CommandDeps): void {
     const { getNotificationManager } = deps;
 
     const toggleNotificationsCommand = vscode.commands.registerCommand('gitea.toggleNotifications', async () => {
@@ -34,5 +36,3 @@ function registerCommands(context, auth, deps) {
         notificationStatusCommand
     );
 }
-
-module.exports = { registerCommands };

@@ -1,15 +1,17 @@
-const vscode = require('vscode');
-const fs = require('fs');
-const { getRepoScanDepth, resolveGitConfigPath, findGitReposInDir } = require('./gitUtils');
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import { getRepoScanDepth, resolveGitConfigPath, findGitReposInDir } from './gitUtils';
+import GiteaAuth from './auth';
+import { GiteaRepository, GiteaIssue, GiteaPullRequest } from './types';
 
 let hasPromptedNoWorkspaceRepos = false;
 
-function shouldShowAllReposWhenNoWorkspace() {
+export function shouldShowAllReposWhenNoWorkspace(): boolean {
     const config = vscode.workspace.getConfiguration('gitea');
     return !!config.get('showAllReposWhenNoWorkspace', false);
 }
 
-async function promptForWorkspaceRepos(allRepos) {
+export async function promptForWorkspaceRepos(allRepos: GiteaRepository[]): Promise<string | null> {
     if (hasPromptedNoWorkspaceRepos) return null;
     hasPromptedNoWorkspaceRepos = true;
 
@@ -51,19 +53,13 @@ async function promptForWorkspaceRepos(allRepos) {
     return null;
 }
 
-// ---------------------------------------------------------------------------
-// Shared workspace-repo filter with caching
-// Replaces the three duplicate filterRepositoriesByWorkspace methods.
-// Cache is keyed by workspace folder paths + repo IDs so it auto-invalidates
-// when either changes. Call invalidateWorkspaceCache() on explicit refresh.
-// ---------------------------------------------------------------------------
-let _wsCache = null;
+let _wsCache: { key: string; repos: GiteaRepository[] } | null = null;
 
-function invalidateWorkspaceCache() {
+export function invalidateWorkspaceCache(): void {
     _wsCache = null;
 }
 
-function filterRepositoriesByWorkspace(allRepos) {
+export function filterRepositoriesByWorkspace(allRepos: GiteaRepository[]): GiteaRepository[] {
     const workspaceFolders = vscode.workspace.workspaceFolders || [];
     if (workspaceFolders.length === 0) return [];
     if (!Array.isArray(allRepos)) return [];
@@ -78,14 +74,12 @@ function filterRepositoriesByWorkspace(allRepos) {
 
     const scanDepth = getRepoScanDepth();
 
-    // Gather all local git repos across all workspace folders (once)
-    const allLocalGitPaths = [];
+    const allLocalGitPaths: string[] = [];
     for (const folder of workspaceFolders) {
         allLocalGitPaths.push(...findGitReposInDir(folder.uri.fsPath, scanDepth));
     }
 
-    // Read each .git/config once and cache the content
-    const gitConfigContents = new Map();
+    const gitConfigContents = new Map<string, string>();
     for (const localPath of allLocalGitPaths) {
         const cfgPath = resolveGitConfigPath(localPath);
         if (cfgPath && fs.existsSync(cfgPath)) {
@@ -95,7 +89,7 @@ function filterRepositoriesByWorkspace(allRepos) {
         }
     }
 
-    const loadedRepos = [];
+    const loadedRepos: GiteaRepository[] = [];
     for (const repo of allRepos) {
         const cloneUrl = repo.clone_url.toLowerCase();
         const htmlUrl = repo.html_url.toLowerCase();
@@ -113,12 +107,11 @@ function filterRepositoriesByWorkspace(allRepos) {
     return loadedRepos;
 }
 
-// ---------------------------------------------------------------------------
-// Tree item classes
-// ---------------------------------------------------------------------------
+export class RepositoryTreeItem extends vscode.TreeItem {
+    repository: GiteaRepository;
+    metadata: any;
 
-class RepositoryTreeItem extends vscode.TreeItem {
-    constructor(repository, collapsibleState) {
+    constructor(repository: GiteaRepository, collapsibleState: vscode.TreeItemCollapsibleState) {
         super(repository.name, collapsibleState);
 
         this.repository = repository;
@@ -139,13 +132,15 @@ class RepositoryTreeItem extends vscode.TreeItem {
     }
 }
 
-class IssueTreeItem extends vscode.TreeItem {
-    constructor(issue, repositoryName) {
+export class IssueTreeItem extends vscode.TreeItem {
+    issue: GiteaIssue;
+    metadata: any;
+
+    constructor(issue: GiteaIssue, repositoryName: string) {
         super(`#${issue.number}: ${issue.title}`, vscode.TreeItemCollapsibleState.None);
 
         this.issue = issue;
 
-        // Description: repo • author [→ assignee] [label1, label2 +N]
         const assigneePart = issue.assignees?.length > 0
             ? ` → ${issue.assignees[0].login}${issue.assignees.length > 1 ? ` +${issue.assignees.length - 1}` : ''}`
             : '';
@@ -155,7 +150,6 @@ class IssueTreeItem extends vscode.TreeItem {
             : '';
         this.description = `${repositoryName} • ${issue.user?.login || '?'}${assigneePart}${labelPart}`;
 
-        // Rich tooltip
         const labelNames = labels.map(l => l.name).join(', ') || 'None';
         const assigneeNames = issue.assignees?.map(a => a.login).join(', ') || 'Unassigned';
         const milestone = issue.milestone?.title || 'None';
@@ -192,20 +186,21 @@ class IssueTreeItem extends vscode.TreeItem {
     }
 }
 
-class PullRequestTreeItem extends vscode.TreeItem {
-    constructor(pullRequest, repositoryName) {
+export class PullRequestTreeItem extends vscode.TreeItem {
+    pullRequest: GiteaPullRequest;
+    metadata: any;
+
+    constructor(pullRequest: GiteaPullRequest, repositoryName: string) {
         super(`#${pullRequest.number}: ${pullRequest.title}`, vscode.TreeItemCollapsibleState.None);
 
         this.pullRequest = pullRequest;
 
-        // Description: repo • author [→ assignee] [Draft]
         const assigneePart = pullRequest.assignees?.length > 0
             ? ` → ${pullRequest.assignees[0].login}`
             : '';
         const draftBadge = pullRequest.draft ? ' [Draft]' : '';
         this.description = `${repositoryName} • ${pullRequest.user?.login || '?'}${assigneePart}${draftBadge}`;
 
-        // Rich tooltip with branch info
         const assigneeNames = pullRequest.assignees?.map(a => a.login).join(', ') || 'Unassigned';
         const headBranch = pullRequest.head?.ref || '?';
         const baseBranch = pullRequest.base?.ref || '?';
@@ -223,7 +218,6 @@ class PullRequestTreeItem extends vscode.TreeItem {
         tip.supportThemeIcons = true;
         this.tooltip = tip;
 
-        // Icon reflects merged / draft / open / closed
         let iconName = 'git-pull-request';
         let iconColor = new vscode.ThemeColor('pullRequests.open');
         if (pullRequest.merged) {
@@ -251,12 +245,15 @@ class PullRequestTreeItem extends vscode.TreeItem {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Providers
-// ---------------------------------------------------------------------------
+export class RepositoryProvider {
+    auth: GiteaAuth;
+    private _onDidChangeTreeData: vscode.EventEmitter<void | undefined | null | void>;
+    readonly onDidChangeTreeData: vscode.Event<void | undefined | null | void>;
+    repositories: GiteaRepository[];
+    mode: string;
+    lastQuery: string;
 
-class RepositoryProvider {
-    constructor(auth) {
+    constructor(auth: GiteaAuth) {
         this.auth = auth;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -265,14 +262,16 @@ class RepositoryProvider {
         this.lastQuery = '';
     }
 
-    refresh() {
+    refresh(): void {
         invalidateWorkspaceCache();
         this._onDidChangeTreeData.fire();
     }
 
-    getTreeItem(element) { return element; }
+    getTreeItem(element: any): vscode.TreeItem {
+        return element;
+    }
 
-    async getChildren(element) {
+    async getChildren(element?: any): Promise<any[]> {
         if (!this.auth.isConfigured()) return [];
         try {
             if (!element) {
@@ -280,7 +279,7 @@ class RepositoryProvider {
                     return (this.repositories || []).map(repo => new RepositoryTreeItem(repo, vscode.TreeItemCollapsibleState.None));
                 }
                 const repos = await this.auth.makeRequest('/api/v1/user/repos');
-                const allRepos = repos || [];
+                const allRepos: GiteaRepository[] = repos || [];
                 let workspaceRepos = filterRepositoriesByWorkspace(allRepos);
 
                 if (workspaceRepos.length === 0) {
@@ -296,27 +295,35 @@ class RepositoryProvider {
                 this.mode = 'all';
                 return this.repositories.map(repo => new RepositoryTreeItem(repo, vscode.TreeItemCollapsibleState.None));
             }
-        } catch (error) {
+        } catch (error: any) {
             vscode.window.showErrorMessage(`Failed to load repositories: ${error.message}`);
         }
         return [];
     }
 
-    async searchRepositories(query) {
+    async searchRepositories(query: string): Promise<void> {
         try {
             const repos = await this.auth.makeRequest(`/api/v1/repos/search?q=${encodeURIComponent(query)}`);
             this.repositories = repos?.data || [];
             this.mode = 'search';
             this.lastQuery = query;
             this.refresh();
-        } catch (error) { vscode.window.showErrorMessage(`Failed to search repositories: ${error.message}`); }
+        } catch (error: any) { vscode.window.showErrorMessage(`Failed to search repositories: ${error.message}`); }
     }
 
-    resetSearch() { this.mode = 'all'; this.lastQuery = ''; this.repositories = []; }
+    resetSearch(): void { this.mode = 'all'; this.lastQuery = ''; this.repositories = []; }
 }
 
-class IssueProvider {
-    constructor(auth) {
+export class IssueProvider {
+    auth: GiteaAuth;
+    private _onDidChangeTreeData: vscode.EventEmitter<void | undefined | null | void>;
+    readonly onDidChangeTreeData: vscode.Event<void | undefined | null | void>;
+    issues: any;
+    mode: string;
+    lastQuery: string;
+    private _loading: boolean;
+
+    constructor(auth: GiteaAuth) {
         this.auth = auth;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -326,26 +333,27 @@ class IssueProvider {
         this._loading = false;
     }
 
-    refresh() {
+    refresh(): void {
         invalidateWorkspaceCache();
         this._onDidChangeTreeData.fire();
     }
 
-    getTreeItem(element) { return element; }
+    getTreeItem(element: any): vscode.TreeItem {
+        return element;
+    }
 
-    async getChildren(element) {
+    async getChildren(element?: any): Promise<any[]> {
         if (!this.auth.isConfigured()) return [];
         try {
             if (!element) {
                 if (this.mode === 'search') return this.issues;
 
-                // Deduplication guard: skip concurrent top-level loads
                 if (this._loading) return [];
                 this._loading = true;
 
                 try {
                     const repos = await this.auth.makeRequest('/api/v1/user/repos');
-                    const allRepos = repos || [];
+                    const allRepos: GiteaRepository[] = repos || [];
                     let workspaceRepos = filterRepositoriesByWorkspace(allRepos);
 
                     if (workspaceRepos.length === 0) {
@@ -357,15 +365,14 @@ class IssueProvider {
                         }
                     }
 
-                    // Fetch open + closed issues for all repos in parallel
                     const repoResults = await Promise.all(workspaceRepos.map(async repo => {
                         try {
                             const [openIssues, closedIssues] = await Promise.all([
                                 this.auth.makeRequest(
-                                    `/api/v1/repos/${repo.owner.login}/${repo.name}/issues?state=open&type=issues&limit=50`
+                                    `/api/v1/repos/${repo.owner!.login}/${repo.name}/issues?state=open&type=issues&limit=50`
                                 ),
                                 this.auth.makeRequest(
-                                    `/api/v1/repos/${repo.owner.login}/${repo.name}/issues?state=closed&type=issues&limit=50`
+                                    `/api/v1/repos/${repo.owner!.login}/${repo.name}/issues?state=closed&type=issues&limit=50`
                                 )
                             ]);
                             return {
@@ -379,11 +386,11 @@ class IssueProvider {
                         }
                     }));
 
-                    const openByRepo = {};
-                    const closedByRepo = {};
+                    const openByRepo: any = {};
+                    const closedByRepo: any = {};
                     for (const { repo, open, closed } of repoResults) {
-                        const openItems = open.map(issue => new IssueTreeItem(issue, repo.full_name));
-                        const closedItems = closed.map(issue => new IssueTreeItem(issue, repo.full_name));
+                        const openItems = open.map((issue: GiteaIssue) => new IssueTreeItem(issue, repo.full_name));
+                        const closedItems = closed.map((issue: GiteaIssue) => new IssueTreeItem(issue, repo.full_name));
                         if (openItems.length > 0) openByRepo[repo.full_name] = openItems;
                         if (closedItems.length > 0) closedByRepo[repo.full_name] = closedItems;
                     }
@@ -428,17 +435,17 @@ class IssueProvider {
                 const repoMap = state === 'open' ? this.issues.openByRepo : this.issues.closedByRepo;
                 return repoMap[repoName] || [];
             }
-        } catch (error) {
+        } catch (error: any) {
             this._loading = false;
             vscode.window.showErrorMessage(`Failed to load issues: ${error.message}`);
         }
         return [];
     }
 
-    async searchIssues(query) {
+    async searchIssues(query: string): Promise<void> {
         try {
             const repos = await this.auth.makeRequest('/api/v1/user/repos');
-            const allRepos = repos || [];
+            const allRepos: GiteaRepository[] = repos || [];
             let workspaceRepos = filterRepositoriesByWorkspace(allRepos);
 
             if (workspaceRepos.length === 0) {
@@ -450,15 +457,14 @@ class IssueProvider {
                 }
             }
 
-            // Use server-side search with ?q= parameter across all repos in parallel
-            const allIssues = [];
+            const allIssues: IssueTreeItem[] = [];
             await Promise.all(workspaceRepos.map(async repo => {
                 try {
                     const issues = await this.auth.makeRequest(
-                        `/api/v1/repos/${repo.owner.login}/${repo.name}/issues?q=${encodeURIComponent(query)}&state=all&type=issues&limit=50`
+                        `/api/v1/repos/${repo.owner!.login}/${repo.name}/issues?q=${encodeURIComponent(query)}&state=all&type=issues&limit=50`
                     );
                     if (Array.isArray(issues)) {
-                        issues.forEach(issue => allIssues.push(new IssueTreeItem(issue, repo.full_name)));
+                        issues.forEach((issue: GiteaIssue) => allIssues.push(new IssueTreeItem(issue, repo.full_name)));
                     }
                 } catch (err) { console.error(`Failed to search issues in ${repo.full_name}:`, err); }
             }));
@@ -467,14 +473,22 @@ class IssueProvider {
             this.mode = 'search';
             this.lastQuery = query;
             this.refresh();
-        } catch (error) { vscode.window.showErrorMessage(`Failed to search issues: ${error.message}`); }
+        } catch (error: any) { vscode.window.showErrorMessage(`Failed to search issues: ${error.message}`); }
     }
 
-    resetSearch() { this.mode = 'all'; this.lastQuery = ''; this.issues = { openByRepo: {}, closedByRepo: {} }; }
+    resetSearch(): void { this.mode = 'all'; this.lastQuery = ''; this.issues = { openByRepo: {}, closedByRepo: {} }; }
 }
 
-class PullRequestProvider {
-    constructor(auth) {
+export class PullRequestProvider {
+    auth: GiteaAuth;
+    private _onDidChangeTreeData: vscode.EventEmitter<void | undefined | null | void>;
+    readonly onDidChangeTreeData: vscode.Event<void | undefined | null | void>;
+    pullRequests: any;
+    mode: string;
+    lastQuery: string;
+    private _loading: boolean;
+
+    constructor(auth: GiteaAuth) {
         this.auth = auth;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -484,26 +498,27 @@ class PullRequestProvider {
         this._loading = false;
     }
 
-    refresh() {
+    refresh(): void {
         invalidateWorkspaceCache();
         this._onDidChangeTreeData.fire();
     }
 
-    getTreeItem(element) { return element; }
+    getTreeItem(element: any): vscode.TreeItem {
+        return element;
+    }
 
-    async getChildren(element) {
+    async getChildren(element?: any): Promise<any[]> {
         if (!this.auth.isConfigured()) return [];
         try {
             if (!element) {
                 if (this.mode === 'search') return this.pullRequests;
 
-                // Deduplication guard
                 if (this._loading) return [];
                 this._loading = true;
 
                 try {
                     const repos = await this.auth.makeRequest('/api/v1/user/repos');
-                    const allRepos = repos || [];
+                    const allRepos: GiteaRepository[] = repos || [];
                     let workspaceRepos = filterRepositoriesByWorkspace(allRepos);
 
                     if (workspaceRepos.length === 0) {
@@ -515,15 +530,14 @@ class PullRequestProvider {
                         }
                     }
 
-                    // Fetch open + closed PRs for all repos in parallel
                     const repoResults = await Promise.all(workspaceRepos.map(async repo => {
                         try {
                             const [openPRs, closedPRs] = await Promise.all([
                                 this.auth.makeRequest(
-                                    `/api/v1/repos/${repo.owner.login}/${repo.name}/pulls?state=open&limit=50`
+                                    `/api/v1/repos/${repo.owner!.login}/${repo.name}/pulls?state=open&limit=50`
                                 ),
                                 this.auth.makeRequest(
-                                    `/api/v1/repos/${repo.owner.login}/${repo.name}/pulls?state=closed&limit=50`
+                                    `/api/v1/repos/${repo.owner!.login}/${repo.name}/pulls?state=closed&limit=50`
                                 )
                             ]);
                             return {
@@ -537,19 +551,19 @@ class PullRequestProvider {
                         }
                     }));
 
-                    const openByRepo = {};
-                    const closedByRepo = {};
-                    const wipByRepo = {};
+                    const openByRepo: any = {};
+                    const closedByRepo: any = {};
+                    const wipByRepo: any = {};
 
                     for (const { repo, open, closed } of repoResults) {
-                        const openItems = [];
-                        const wipItems = [];
-                        open.forEach(pr => {
+                        const openItems: PullRequestTreeItem[] = [];
+                        const wipItems: PullRequestTreeItem[] = [];
+                        open.forEach((pr: GiteaPullRequest) => {
                             const isWIP = pr.draft || /^(wip|\[wip\]|work in progress|draft)/i.test(pr.title);
                             if (isWIP) wipItems.push(new PullRequestTreeItem(pr, repo.full_name));
                             else openItems.push(new PullRequestTreeItem(pr, repo.full_name));
                         });
-                        const closedItems = closed.map(pr => new PullRequestTreeItem(pr, repo.full_name));
+                        const closedItems = closed.map((pr: GiteaPullRequest) => new PullRequestTreeItem(pr, repo.full_name));
 
                         if (openItems.length > 0) openByRepo[repo.full_name] = openItems;
                         if (wipItems.length > 0) wipByRepo[repo.full_name] = wipItems;
@@ -610,17 +624,17 @@ class PullRequestProvider {
                 else repoMap = this.pullRequests.closedByRepo;
                 return repoMap[repoName] || [];
             }
-        } catch (error) {
+        } catch (error: any) {
             this._loading = false;
             vscode.window.showErrorMessage(`Failed to load pull requests: ${error.message}`);
         }
         return [];
     }
 
-    async searchPullRequests(query) {
+    async searchPullRequests(query: string): Promise<void> {
         try {
             const repos = await this.auth.makeRequest('/api/v1/user/repos');
-            const allRepos = repos || [];
+            const allRepos: GiteaRepository[] = repos || [];
             let workspaceRepos = filterRepositoriesByWorkspace(allRepos);
 
             if (workspaceRepos.length === 0) {
@@ -632,15 +646,14 @@ class PullRequestProvider {
                 }
             }
 
-            // Server-side search across all repos in parallel
-            const allPRs = [];
+            const allPRs: PullRequestTreeItem[] = [];
             await Promise.all(workspaceRepos.map(async repo => {
                 try {
                     const prs = await this.auth.makeRequest(
-                        `/api/v1/repos/${repo.owner.login}/${repo.name}/pulls?q=${encodeURIComponent(query)}&state=all&limit=50`
+                        `/api/v1/repos/${repo.owner!.login}/${repo.name}/pulls?q=${encodeURIComponent(query)}&state=all&limit=50`
                     );
                     if (Array.isArray(prs)) {
-                        prs.forEach(pr => {
+                        prs.forEach((pr: GiteaPullRequest) => {
                             if (pr.title.toLowerCase().includes(query.toLowerCase())) {
                                 allPRs.push(new PullRequestTreeItem(pr, repo.full_name));
                             }
@@ -653,18 +666,8 @@ class PullRequestProvider {
             this.mode = 'search';
             this.lastQuery = query;
             this.refresh();
-        } catch (error) { vscode.window.showErrorMessage(`Failed to search pull requests: ${error.message}`); }
+        } catch (error: any) { vscode.window.showErrorMessage(`Failed to search pull requests: ${error.message}`); }
     }
 
-    resetSearch() { this.mode = 'all'; this.lastQuery = ''; this.pullRequests = { openByRepo: {}, closedByRepo: {}, wipByRepo: {} }; }
+    resetSearch(): void { this.mode = 'all'; this.lastQuery = ''; this.pullRequests = { openByRepo: {}, closedByRepo: {}, wipByRepo: {} }; }
 }
-
-module.exports = {
-    RepositoryProvider,
-    IssueProvider,
-    PullRequestProvider,
-    RepositoryTreeItem,
-    IssueTreeItem,
-    PullRequestTreeItem,
-    filterRepositoriesByWorkspace
-};
